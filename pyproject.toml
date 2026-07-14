@@ -1,0 +1,37 @@
+[project]
+name = "personalized-chess-trainer"
+version = "0.1.0"
+description = "Personal chess-training pipeline: ingest Chess.com games, find mistakes with Stockfish, drill personalized puzzles."
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+    "chess>=1.11",
+]
+
+[project.scripts]
+chess-trainer = "chess_trainer.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chess_trainer"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
