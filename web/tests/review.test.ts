@@ -33,6 +33,13 @@ describe("sm2Update", () => {
     expect(failed.dueDate < passed.dueDate).toBe(true);
   });
 
+  it("interval uses Python banker's rounding on .5 ties", () => {
+    // Python round(5 * 2.5) == round(12.5) == 12 (not 13)
+    const s = sm2Update({ ease: 2.5, intervalDays: 5, reps: 2 }, true, TODAY);
+    expect(s.reps).toBe(3);
+    expect(s.intervalDays).toBe(12);
+  });
+
   it("ease floor 1.3", () => {
     let s: any = { ease: 1.3, intervalDays: 5, reps: 2 };
     for (let i = 0; i < 3; i++) {
