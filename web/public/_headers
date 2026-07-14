@@ -1,0 +1,6 @@
+# Cloudflare Pages headers. Cross-origin isolation enables SharedArrayBuffer
+# (threaded Stockfish-WASM). Verified: the Chess.com CORS fetch still succeeds
+# under require-corp, so no proxy is needed.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp

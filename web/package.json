@@ -16,6 +16,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
-    "chessops": "^0.15.1"
+    "chessops": "^0.15.1",
+    "stockfish": "^18.0.8"
   }
 }
