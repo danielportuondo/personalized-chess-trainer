@@ -15,11 +15,21 @@ import { bishopAttacks, kingAttacks, knightAttacks, pawnAttacks, rookAttacks } f
 import type { Board } from "chessops/board";
 import type { SquareSet } from "chessops/squareSet";
 import type { Color, Role, Square } from "chessops/types";
-import type { Phase } from "./types";
+import type { Motif, Phase } from "./types";
 
 const OPENING_MAX_MOVE = 10;
 const ENDGAME_NPM_MAX = 20;
 const PV_PLY_CAP = 16;
+const MATE_CP_THRESHOLD = 9000;
+const MATERIAL_GAIN_MIN = 2;
+
+export const REASON: Record<Motif, string> = {
+  "missed forced mate": "you missed a forced mate",
+  "allowed forced mate": "you walked into a forced mate",
+  "hanging piece": "you left a piece hanging",
+  "missed win of material": "you missed winning material",
+  other: "a stronger move was available",
+};
 
 const NONPAWN: Partial<Record<Role, number>> = { knight: 3, bishop: 3, rook: 5, queen: 9 };
 const MATERIAL: Partial<Record<Role, number>> = { pawn: 1, ...NONPAWN };
@@ -91,4 +101,38 @@ export function pvMaterialGain(fen: string, lineUci: string, player: Color): num
   }
   const after = material(pos.board, player) - material(pos.board, opponent);
   return after - before;
+}
+
+export function classifyMotif(
+  fen: string,
+  playedUci: string,
+  bestUci: string,
+  evalBeforeCp: number,
+  evalAfterPlayedCp?: number,
+  bestLineUci?: string,
+): Motif {
+  if (evalBeforeCp >= MATE_CP_THRESHOLD) return "missed forced mate";
+  if (evalAfterPlayedCp != null && evalAfterPlayedCp <= -MATE_CP_THRESHOLD) return "allowed forced mate";
+
+  const pos = Chess.fromSetup(parseFen(fen).unwrap()).unwrap();
+  const player = pos.turn;
+
+  const move = parseUci(playedUci);
+  if (move && pos.isLegal(move)) {
+    const after = pos.clone();
+    after.play(move);
+    for (const sq of after.board[player]) {
+      const role = after.board.get(sq)!.role;
+      if (role !== "pawn" && role !== "king" && isHanging(after.board, sq, player)) {
+        return "hanging piece";
+      }
+    }
+  }
+
+  const line = bestLineUci || bestUci;
+  if (line && bestUci && bestUci !== playedUci && pvMaterialGain(fen, line, player) >= MATERIAL_GAIN_MIN) {
+    return "missed win of material";
+  }
+
+  return "other";
 }
