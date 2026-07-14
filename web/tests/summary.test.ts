@@ -79,13 +79,40 @@ describe("weaknessSummary", () => {
     }
   });
 
-  it("group avgCpl uses banker's (round-half-to-even) rounding on an exact .5 tie", () => {
-    // avg = (10 + 15) / 2 = 12.5 -> Python round(12.5, 0) == 12 (even), not 13.
+  it("group avgCpl uses SQLite ROUND (half-AWAY-from-zero) on an exact .5 tie", () => {
+    // avg = (10 + 15) / 2 = 12.5 -> SQLite ROUND(12.5, 0) == 13 (away), NOT
+    // Python builtin round(12.5) == 12 (banker's). Group fields use SQL ROUND().
     const puzzles: Puzzle[] = [
       pz({ dedupeKey: "1", phase: "opening", cpl: 10, sourcePly: 1 }),
       pz({ dedupeKey: "2", phase: "opening", cpl: 15, sourcePly: 1 }),
     ];
     const s = weaknessSummary(puzzles);
-    expect(s.byPhase[0].avgCpl).toBe(12);
+    expect(s.byPhase[0].avgCpl).toBe(13);
+  });
+
+  it("group pct uses SQLite ROUND (half-AWAY-from-zero) on a .05 tie at 1 dp", () => {
+    // 1 of 16 -> 6.25% -> SQLite ROUND(6.25, 1) == 6.3 (away), not 6.2 (banker's).
+    const puzzles: Puzzle[] = [
+      pz({ dedupeKey: "odd", phase: "opening", cpl: 100, sourcePly: 1 }),
+      ...Array.from({ length: 15 }, (_, i) =>
+        pz({ dedupeKey: `m${i}`, phase: "middlegame", cpl: 100, sourcePly: 1 })
+      ),
+    ];
+    const s = weaknessSummary(puzzles);
+    const opening = s.byPhase.find((r) => r.key === "opening")!;
+    expect(opening.pct).toBe(6.3);
+  });
+
+  it("TOP-LEVEL avgCpl uses Python builtin round (banker's / half-to-even) at 1 dp", () => {
+    // avg = 49 / 4 = 12.25 -> Python round(12.25, 1) == 12.2 (even), NOT the
+    // SQL half-away 12.3. Distinguishes the top-level path from the group path.
+    const puzzles: Puzzle[] = [
+      pz({ dedupeKey: "1", cpl: 12, sourcePly: 1 }),
+      pz({ dedupeKey: "2", cpl: 12, sourcePly: 1 }),
+      pz({ dedupeKey: "3", cpl: 12, sourcePly: 1 }),
+      pz({ dedupeKey: "4", cpl: 13, sourcePly: 1 }),
+    ];
+    const s = weaknessSummary(puzzles);
+    expect(s.avgCpl).toBe(12.2);
   });
 });

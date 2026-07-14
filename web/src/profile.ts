@@ -138,6 +138,17 @@ export function classifyMotif(
   return "other";
 }
 
+// SQLite's ROUND() rounds half AWAY from zero (ROUND(2.5)=3, ROUND(12.5,0)=13,
+// ROUND(6.25,1)=6.3) — NOT Python's builtin banker's round(). The GroupRow pct
+// (1 dp) and avgCpl (0 dp) come from SQL ROUND() in _grouped/_by_move_bucket, so
+// they must use this, not pyRound. All inputs here are non-negative, so JS's
+// half-up Math.round equals half-away-from-zero. (The TOP-LEVEL summary avgCpl at
+// profile.py:209 uses Python builtin round() and stays on pyRound below.)
+function roundHalfAway(x: number, ndigits = 0): number {
+  const f = 10 ** ndigits;
+  return Math.round(x * f) / f;
+}
+
 // Port of profile.py:173-181's _grouped(): COALESCE(column, 'unknown'), grouped,
 // ordered by n DESC (ties keep first-seen key order via a stable sort).
 function groupBy(puzzles: Puzzle[], keyFn: (p: Puzzle) => string): GroupRow[] {
@@ -160,8 +171,8 @@ function groupBy(puzzles: Puzzle[], keyFn: (p: Puzzle) => string): GroupRow[] {
     return {
       key,
       n,
-      pct: pyRound((100 * n) / total, 1),
-      avgCpl: pyRound(cplSums.get(key)! / n, 0),
+      pct: roundHalfAway((100 * n) / total, 1),
+      avgCpl: roundHalfAway(cplSums.get(key)! / n, 0),
     };
   });
   rows.sort((a, b) => b.n - a.n);
