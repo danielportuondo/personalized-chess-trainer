@@ -15,7 +15,8 @@ import { bishopAttacks, kingAttacks, knightAttacks, pawnAttacks, rookAttacks } f
 import type { Board } from "chessops/board";
 import type { SquareSet } from "chessops/squareSet";
 import type { Color, Role, Square } from "chessops/types";
-import type { Motif, Phase } from "./types";
+import type { GroupRow, Motif, Phase, Puzzle, WeaknessSummary } from "./types";
+import { pyRound } from "./review";
 
 const OPENING_MAX_MOVE = 10;
 const ENDGAME_NPM_MAX = 20;
@@ -135,4 +136,68 @@ export function classifyMotif(
   }
 
   return "other";
+}
+
+// Port of profile.py:173-181's _grouped(): COALESCE(column, 'unknown'), grouped,
+// ordered by n DESC (ties keep first-seen key order via a stable sort).
+function groupBy(puzzles: Puzzle[], keyFn: (p: Puzzle) => string): GroupRow[] {
+  const total = puzzles.length;
+  const order: string[] = [];
+  const counts = new Map<string, number>();
+  const cplSums = new Map<string, number>();
+  for (const p of puzzles) {
+    const key = keyFn(p);
+    if (!counts.has(key)) {
+      counts.set(key, 0);
+      cplSums.set(key, 0);
+      order.push(key);
+    }
+    counts.set(key, counts.get(key)! + 1);
+    cplSums.set(key, cplSums.get(key)! + p.cpl);
+  }
+  const rows: GroupRow[] = order.map((key) => {
+    const n = counts.get(key)!;
+    return {
+      key,
+      n,
+      pct: pyRound((100 * n) / total, 1),
+      avgCpl: pyRound(cplSums.get(key)! / n, 0),
+    };
+  });
+  rows.sort((a, b) => b.n - a.n);
+  return rows;
+}
+
+const MOVE_BUCKETS = ["1-10", "11-20", "21-30", "31+"] as const;
+
+// Port of profile.py:184-199's _by_move_bucket(): CASE bucketing on
+// source_ply/2+1, grouped, ordered by MIN(source_ply) — equivalently the
+// fixed bucket order, since ply always increases with bucket.
+function moveBucket(sourcePly: number): string {
+  const moveNo = Math.floor(sourcePly / 2) + 1;
+  if (moveNo <= 10) return "1-10";
+  if (moveNo <= 20) return "11-20";
+  if (moveNo <= 30) return "21-30";
+  return "31+";
+}
+
+// Port of profile.py:202-218's weakness_summary().
+export function weaknessSummary(puzzles: Puzzle[]): WeaknessSummary {
+  const total = puzzles.length;
+  if (!total) {
+    return { totalMistakes: 0, avgCpl: 0, byPhase: [], byMotif: [], byMoveBucket: [] };
+  }
+
+  const avgCpl = pyRound(
+    puzzles.reduce((sum, p) => sum + p.cpl, 0) / total,
+    1
+  );
+  const byPhase = groupBy(puzzles, (p) => p.phase ?? "unknown");
+  const byMotif = groupBy(puzzles, (p) => p.motif ?? "unknown");
+  const byMoveBucket = groupBy(puzzles, (p) => moveBucket(p.sourcePly)).sort(
+    (a, b) => MOVE_BUCKETS.indexOf(a.key as (typeof MOVE_BUCKETS)[number]) -
+      MOVE_BUCKETS.indexOf(b.key as (typeof MOVE_BUCKETS)[number])
+  );
+
+  return { totalMistakes: total, avgCpl, byPhase, byMotif, byMoveBucket };
 }

@@ -45,3 +45,18 @@ export interface ReviewState {
   lastResult?: 0 | 1;
   lastReviewed?: string;
 }
+
+export interface GroupRow {
+  key: string;
+  n: number;
+  pct: number;
+  avgCpl: number;
+}
+
+export interface WeaknessSummary {
+  totalMistakes: number;
+  avgCpl: number;
+  byPhase: GroupRow[];
+  byMotif: GroupRow[];
+  byMoveBucket: GroupRow[];
+}
