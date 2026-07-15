@@ -66,11 +66,12 @@ describe("createEngine (injected FakeWorker)", () => {
     expect(last().terminated).toBe(true);
   });
 
-  it("rejects on worker onerror during handshake", async () => {
-    const { createWorker } = fakeFactory((cmd, _emit, failWith) => {
+  it("rejects on worker onerror during handshake and terminates the worker", async () => {
+    const { createWorker, last } = fakeFactory((cmd, _emit, failWith) => {
       if (cmd === "uci") failWith("wasm load failed");
     });
     await expect(createEngine({ createWorker })).rejects.toThrow(/wasm load failed/);
+    expect(last().terminated).toBe(true);
   });
 
   it("quit() rejects an in-flight analyse (no hang)", async () => {

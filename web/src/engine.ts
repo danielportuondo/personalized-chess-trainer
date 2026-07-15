@@ -68,7 +68,12 @@ export async function createEngine(opts?: EngineOptions): Promise<Engine> {
     lineHandler?.(String(e.data));
   };
   worker.onerror = (e: ErrorEvent) => {
+    // Symmetric with quit()/timeout: mark terminated + tear down the worker so an
+    // error that fires between queued jobs (no waiter pending) can't leave the next
+    // enqueue() posting to a dead worker and hanging — it short-circuit-rejects.
+    terminated = true;
     currentReject?.(new Error(`stockfish: worker error: ${e?.message || "unknown"}`));
+    worker.terminate();
   };
 
   function send(cmd: string): void {
