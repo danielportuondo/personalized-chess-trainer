@@ -60,3 +60,18 @@ export interface WeaknessSummary {
   byMotif: GroupRow[];
   byMoveBucket: GroupRow[];
 }
+
+export interface RawGame {
+  url: string;
+  archiveUrl: string;
+  pgn: string;
+  timeClass: string | null;
+  timeControl: string | null;
+  rules: string | null;
+  endTime: number | null;
+  whiteUsername: string | null;
+  blackUsername: string | null;
+  whiteResult: string | null;
+  blackResult: string | null;
+  result: string | null;
+}
