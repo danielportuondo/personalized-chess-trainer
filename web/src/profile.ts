@@ -15,7 +15,7 @@ import { bishopAttacks, kingAttacks, knightAttacks, pawnAttacks, rookAttacks } f
 import type { Board } from "chessops/board";
 import type { SquareSet } from "chessops/squareSet";
 import type { Color, Role, Square } from "chessops/types";
-import type { GroupRow, Motif, Phase, Puzzle, WeaknessSummary } from "./types";
+import type { GroupRow, Motif, MoveEval, Phase, Puzzle, WeaknessSummary } from "./types";
 import { pyRound } from "./review";
 
 const OPENING_MAX_MOVE = 10;
@@ -136,6 +136,22 @@ export function classifyMotif(
   }
 
   return "other";
+}
+
+// Port of profile.py:149-170's tag_motifs: joins each puzzle back to its source
+// MoveEval on (sourceGameUrl, sourcePly) to recover evalAfterPlayedCp (not stored
+// on Puzzle), then classifies in place. Mirrors the SQL join exactly; a puzzle
+// with no matching eval (shouldn't happen — every puzzle is derived from one) is
+// left untagged rather than throwing.
+export function tagMotifs(puzzles: Puzzle[], evals: MoveEval[]): void {
+  const byKey = new Map<string, MoveEval>();
+  for (const e of evals) byKey.set(`${e.gameUrl}#${e.ply}`, e);
+
+  for (const p of puzzles) {
+    const e = byKey.get(`${p.sourceGameUrl}#${p.sourcePly}`);
+    if (!e) continue;
+    p.motif = classifyMotif(p.fen, p.playedMoveUci, p.bestMoveUci, p.evalBeforeCp, e.evalAfterPlayedCp, p.solutionLineUci);
+  }
 }
 
 // SQLite's ROUND() rounds half AWAY from zero (ROUND(2.5)=3, ROUND(12.5,0)=13,

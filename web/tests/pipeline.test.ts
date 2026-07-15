@@ -73,13 +73,14 @@ function fakeEngineFactory(infos: AnalysisInfo[]): {
 
 describe("runPipeline", () => {
   it("wires fetch -> per-game newGame+analyze -> extract -> summary end to end", async () => {
-    // game1 (White=dportuondo, 1 player move: e4): before=40 (white pov), after=900 (black
-    // pov, since it's black to move post-e4) -> flips to -900 white pov -> cpl=940 (blunder).
+    // game1 (White=dportuondo, 1 player move: e4): before=40 (white pov), after=9000 (black
+    // pov, since it's black to move post-e4) -> flips to -9000 white pov -> cpl=9040 (blunder,
+    // and evalAfterPlayedCp <= -9000 classifies as "allowed forced mate").
     // game2 (Black=dportuondo, 1 player move: ...d5): before=10 (black pov), after=5 (white
     // pov post-d5) -> flips to -5 black pov -> cpl=15 (not a puzzle).
     const infos: AnalysisInfo[] = [
       { cp: 40, mate: null, pv: ["e2e4"] },
-      { cp: 900, mate: null, pv: [] },
+      { cp: 9000, mate: null, pv: [] },
       { cp: 10, mate: null, pv: ["d7d5"] },
       { cp: 5, mate: null, pv: [] },
     ];
@@ -96,7 +97,12 @@ describe("runPipeline", () => {
 
     expect(result.puzzles.length).toBeGreaterThanOrEqual(1);
     expect(result.summary.totalMistakes).toBeGreaterThan(0);
-    expect(result.puzzles[0].cpl).toBe(940);
+    expect(result.puzzles[0].cpl).toBe(9040);
+    expect(result.puzzles[0].motif).toBe("allowed forced mate");
+    expect(result.summary.byMotif).toContainEqual(
+      expect.objectContaining({ key: "allowed forced mate", n: 1 })
+    );
+    expect(result.summary.byMotif.some((row) => row.key === "unknown")).toBe(false);
 
     expect(engine.newGame).toHaveBeenCalledTimes(2); // once per game
     expect(engine.quit).toHaveBeenCalledTimes(1);

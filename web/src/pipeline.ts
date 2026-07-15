@@ -7,7 +7,7 @@ import { fetchRecentGames } from "./chesscom";
 import { analyzeGame } from "./analysis";
 import { createEngine } from "./engine";
 import { extractPuzzles } from "./extract";
-import { weaknessSummary } from "./profile";
+import { tagMotifs, weaknessSummary } from "./profile";
 
 export interface RunPipelineOptions {
   maxGames?: number;
@@ -44,6 +44,7 @@ export async function runPipeline(
       onProgress?.(i + 1, games.length);
     }
     const puzzles = extractPuzzles(evals);
+    tagMotifs(puzzles, evals);
     const summary = weaknessSummary(puzzles);
     return { puzzles, summary };
   } finally {
