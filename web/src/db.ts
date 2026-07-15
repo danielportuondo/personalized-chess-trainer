@@ -1,6 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { Meta, MoveEval, Puzzle, ReviewState } from "./types";
 import { sm2Update } from "./review";
+import { applyReviewToMeta } from "./progress";
 
 export const DB_NAME = "chess-trainer";
 export const DB_VERSION = 2;
@@ -135,6 +136,18 @@ export async function putMeta(
   meta: Meta,
 ): Promise<void> {
   await db.put("meta", meta);
+}
+
+export async function recordProgress(
+  db: IDBPDatabase<TrainerSchema>,
+  username: string,
+  passed: boolean,
+  today: string,
+): Promise<Meta> {
+  const prior = await getMeta(db, username);
+  const next = applyReviewToMeta(prior, passed, today);
+  await putMeta(db, next);
+  return next;
 }
 
 export async function openTrainerDb(): Promise<IDBPDatabase<TrainerSchema>> {
