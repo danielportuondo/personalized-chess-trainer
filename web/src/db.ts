@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { MoveEval, Puzzle, ReviewState } from "./types";
+import { sm2Update } from "./review";
 
 export const DB_NAME = "chess-trainer";
 export const DB_VERSION = 1;
@@ -57,6 +58,59 @@ export async function getAllEvals(
 ): Promise<MoveEval[]> {
   const records = await db.getAllFromIndex("analyses", "by_username", username);
   return records.flatMap((record) => record.evals);
+}
+
+export async function putPuzzlesIfAbsent(
+  db: IDBPDatabase<TrainerSchema>,
+  username: string,
+  puzzles: Puzzle[],
+): Promise<number> {
+  let inserted = 0;
+  // Per-puzzle getKey+put (not a single readwrite tx) — idb auto-closes a
+  // transaction once control returns to the microtask queue without an
+  // outstanding request, so mixing awaits on non-idb work inside one tx risks
+  // premature closure. This mirrors extract.py:31's INSERT OR IGNORE: first-wins.
+  for (const puzzle of puzzles) {
+    const existing = await db.getKey("puzzles", [username, puzzle.dedupeKey]);
+    if (existing === undefined) {
+      await db.put("puzzles", { ...puzzle, username });
+      inserted += 1;
+    }
+  }
+  return inserted;
+}
+
+export async function getAllPuzzles(
+  db: IDBPDatabase<TrainerSchema>,
+  username: string,
+): Promise<Puzzle[]> {
+  const records = await db.getAllFromIndex("puzzles", "by_username", username);
+  return records.map(({ username: _username, ...puzzle }) => puzzle);
+}
+
+export async function getReviewByKey(
+  db: IDBPDatabase<TrainerSchema>,
+  username: string,
+): Promise<Record<string, ReviewState>> {
+  const records = await db.getAllFromIndex("reviewState", "by_username", username);
+  const byKey: Record<string, ReviewState> = {};
+  for (const { username: _username, dedupeKey, ...state } of records) {
+    byKey[dedupeKey] = state;
+  }
+  return byKey;
+}
+
+export async function recordResult(
+  db: IDBPDatabase<TrainerSchema>,
+  username: string,
+  dedupeKey: string,
+  passed: boolean,
+  today: string,
+): Promise<ReviewState> {
+  const prior = await db.get("reviewState", [username, dedupeKey]);
+  const next = sm2Update(prior ?? {}, passed, today);
+  await db.put("reviewState", { ...next, username, dedupeKey });
+  return next;
 }
 
 export function openTrainerDb(): Promise<IDBPDatabase<TrainerSchema>> {
