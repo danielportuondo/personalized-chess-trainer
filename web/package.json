@@ -13,12 +13,14 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "fake-indexeddb": "^6.2.5",
     "typescript": "^7.0.2",
     "vite": "^8.1.4",
     "vitest": "^4.1.10"
   },
   "dependencies": {
     "chessops": "^0.15.1",
+    "idb": "^8.0.3",
     "stockfish": "^18.0.8"
   }
 }
