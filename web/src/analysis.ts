@@ -21,8 +21,10 @@
 import { parsePgn, startingPosition } from "chessops/pgn";
 import { parseSan } from "chessops/san";
 import { makeFen, INITIAL_FEN } from "chessops/fen";
-import { makeUci } from "chessops/util";
-import type { Color } from "chessops/types";
+import { makeUci, kingCastlesTo } from "chessops/util";
+import { isNormal } from "chessops/types";
+import type { CastlingSide, Color, Move } from "chessops/types";
+import type { Board } from "chessops/board";
 import type { MoveEval } from "./types";
 import { gamePhase } from "./profile";
 
@@ -52,6 +54,26 @@ function colorOf(headers: Map<string, string>, username: string): Color | null {
   if ((headers.get("White") ?? "").toLowerCase() === u) return "white";
   if ((headers.get("Black") ?? "").toLowerCase() === u) return "black";
   return null;
+}
+
+// chessops's parseSan encodes castling as king-captures-own-rook (move.to is the
+// rook's square, e.g. "e1h1" for White O-O), but the Python reference (python-chess's
+// Move.uci()) and Stockfish's PV both use standard king-two-square UCI ("e1g1"). This
+// normalizes ONLY the stored playedMoveUci string to match that contract; the actual
+// game walk (pos.play(move)) keeps using the original chessops move unchanged.
+// Detect castling as king-to-same-color-rook (board state is pre-move here): a king
+// capturing an ENEMY rook has an opposite-color piece on `to` and must NOT normalize.
+function playedUci(board: Board, move: Move, player: Color): string {
+  if (isNormal(move)) {
+    const movedPiece = board.get(move.from);
+    const targetPiece = board.get(move.to);
+    if (movedPiece?.role === "king" && targetPiece?.role === "rook" && targetPiece.color === movedPiece.color) {
+      const side: CastlingSide = move.to > move.from ? "h" : "a";
+      const normalizedTo = kingCastlesTo(player, side);
+      return makeUci({ from: move.from, to: normalizedTo });
+    }
+  }
+  return makeUci(move);
 }
 
 // Port of analyze.py:49-102's analyze_game. `engine.analyse(board, limit, game=id)` +
@@ -86,7 +108,7 @@ export async function analyzeGame(
     if (pos.turn === playerColor) {
       const fenBefore = makeFen(pos.toSetup());
       const fullmoveNo = pos.fullmoves;
-      const playedMoveUci = makeUci(move);
+      const playedMoveUci = playedUci(pos.board, move, playerColor);
 
       const info = await analyse(fenBefore);
       const evalBefore = povCp(info, pos.turn, playerColor); // pos.turn === playerColor here (see the `if` above)

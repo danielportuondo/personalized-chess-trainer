@@ -71,6 +71,37 @@ describe("analyzeGame — guard clauses", () => {
   });
 });
 
+// Port of the parity contract (chessops encodes castling as king-captures-own-rook,
+// e.g. "e1h1"; the Python reference / Stockfish PV use standard king-two-square UCI,
+// e.g. "e1g1") — guards against playedMoveUci diverging from bestMoveUci/the PV.
+describe("analyzeGame — castling playedMoveUci normalization", () => {
+  it("normalizes kingside castling (O-O) to standard UCI e1g1, not e1h1", async () => {
+    // Player is White throughout, so every White move (e4, Nf3, Bc4, O-O) — not just
+    // the castle — triggers a before+after analyse call; the castling eval is last.
+    const pgn = '[White "dportuondo"]\n[Black "opp"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. O-O *';
+    const placeholder: AnalysisInfo = { cp: 20, mate: null, pv: [] };
+    const analyse = fakeAnalyse(Array(8).fill(placeholder));
+
+    const evals = await analyzeGame(pgn, "dportuondo", analyse);
+
+    expect(evals).toHaveLength(4);
+    expect(evals[3].playedMoveUci).toBe("e1g1");
+  });
+
+  it("normalizes queenside castling (O-O-O) to standard UCI e1c1, not e1a1", async () => {
+    // 5 White moves (d4, Nc3, Bf4, Qd2, O-O-O) clear b1/c1/d1 for the queenside castle.
+    const pgn =
+      '[White "dportuondo"]\n[Black "opp"]\n\n1. d4 d5 2. Nc3 Nc6 3. Bf4 Bf5 4. Qd2 Qd6 5. O-O-O *';
+    const placeholder: AnalysisInfo = { cp: 15, mate: null, pv: [] };
+    const analyse = fakeAnalyse(Array(10).fill(placeholder));
+
+    const evals = await analyzeGame(pgn, "dportuondo", analyse);
+
+    expect(evals).toHaveLength(5);
+    expect(evals[4].playedMoveUci).toBe("e1c1");
+  });
+});
+
 // Nice to have: exercises the game-over branch (evalAfter = MATE_SCORE without a
 // second `analyse` call), via the well-known Fool's Mate (fastest possible checkmate).
 describe("analyzeGame — checkmate on the player's own move", () => {

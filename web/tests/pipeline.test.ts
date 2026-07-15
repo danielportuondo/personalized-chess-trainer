@@ -131,4 +131,29 @@ describe("runPipeline", () => {
 
     expect(quit).toHaveBeenCalledTimes(1);
   });
+
+  it("resolves an empty result when the player has no archived games (still creates/quits the engine)", async () => {
+    const fetchImpl = vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (url === ARCHIVES_URL) return fakeResponse(200, { archives: [] });
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as unknown as typeof fetch;
+    const { createEngineFn, engine } = fakeEngineFactory([]);
+
+    const result = await runPipeline("dportuondo", { fetchImpl, createEngineFn });
+
+    expect(result).toEqual({
+      puzzles: [],
+      summary: {
+        totalMistakes: 0,
+        avgCpl: 0,
+        byPhase: [],
+        byMotif: [],
+        byMoveBucket: [],
+      },
+    });
+    expect(createEngineFn).toHaveBeenCalledTimes(1);
+    expect(engine.newGame).not.toHaveBeenCalled();
+    expect(engine.quit).toHaveBeenCalledTimes(1);
+  });
 });
