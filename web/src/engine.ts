@@ -3,6 +3,11 @@
 // Worker and speaks UCI over postMessage. Fulfills the `AnalyseFn` contract
 // from analysis.ts, whose analyzeGame() consumes it — score/pv are relative
 // to the side to move, exactly what povCp() expects.
+//
+// The Worker is created through an injectable factory (opts.createWorker) so the
+// whole UCI protocol — including timeout/onerror/quit failure paths — is
+// unit-testable with a scripted fake, without a browser (see tests/engine.test.ts).
+// It also leaves room to swap in the threaded build later without touching callers.
 import type { AnalyseFn, AnalysisInfo } from "./analysis";
 
 export interface Engine {
@@ -13,10 +18,13 @@ export interface Engine {
 
 export interface EngineOptions {
   depth?: number;
+  readyTimeoutMs?: number;
+  createWorker?: () => Worker;
 }
 
 const DEFAULT_DEPTH = 12;
-const ENGINE_URL = "/engine/stockfish-18-lite-single.js";
+const DEFAULT_READY_TIMEOUT_MS = 20000;
+export const ENGINE_URL = "/engine/stockfish-18-lite-single.js";
 
 export interface ParsedInfo {
   cp: number | null;
@@ -44,39 +52,76 @@ export function parseInfoLine(line: string): ParsedInfo | null {
 
 export async function createEngine(opts?: EngineOptions): Promise<Engine> {
   const depth = opts?.depth ?? DEFAULT_DEPTH;
-  const worker = new Worker(ENGINE_URL);
+  const readyTimeoutMs = opts?.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
+  const createWorker = opts?.createWorker ?? (() => new Worker(ENGINE_URL));
+  const worker = createWorker();
 
-  // Single choke point for every line the engine posts back; whoever is
-  // currently awaiting a reply (handshake / newGame / analyse) owns it.
+  // Exactly one operation (handshake / analyse / newGame) awaits worker output at
+  // a time (searches are serialized below). `currentReject` is its reject fn, so a
+  // worker error, a handshake timeout, or quit() can fail-fast the pending waiter
+  // instead of leaving it to hang forever.
   let lineHandler: ((line: string) => void) | null = null;
+  let currentReject: ((err: Error) => void) | null = null;
+  let terminated = false;
+
   worker.onmessage = (e: MessageEvent) => {
     lineHandler?.(String(e.data));
+  };
+  worker.onerror = (e: ErrorEvent) => {
+    currentReject?.(new Error(`stockfish: worker error: ${e?.message || "unknown"}`));
   };
 
   function send(cmd: string): void {
     worker.postMessage(cmd);
   }
 
-  function waitForLine(isMatch: (line: string) => boolean): Promise<void> {
-    return new Promise((resolve) => {
-      lineHandler = (line) => {
-        if (isMatch(line)) {
+  // Registers the sole pending waiter. `onLine` decides when to resolve/reject;
+  // settling clears both `lineHandler` and `currentReject` so no stale reference
+  // can fire twice.
+  function awaitReply<T>(
+    onLine: (line: string, resolve: (v: T) => void, reject: (e: Error) => void) => void
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const settle =
+        <A>(fn: (a: A) => void) =>
+        (a: A) => {
           lineHandler = null;
-          resolve();
-        }
-      };
+          currentReject = null;
+          fn(a);
+        };
+      const settleResolve = settle(resolve);
+      const settleReject = settle(reject);
+      currentReject = settleReject;
+      lineHandler = (line) => onLine(line, settleResolve, settleReject);
     });
   }
 
-  const uciok = waitForLine((line) => line === "uciok");
+  const handshake = awaitReply<void>((line, resolve) => {
+    if (line === "uciok") resolve();
+  });
   send("uci");
-  await uciok;
+  const timer = setTimeout(() => {
+    currentReject?.(
+      new Error(`stockfish: engine handshake timed out after ${readyTimeoutMs}ms (no uciok)`)
+    );
+  }, readyTimeoutMs);
+  try {
+    await handshake;
+  } catch (err) {
+    worker.terminate();
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 
-  // Internal serial queue: only one `go` in flight at a time, regardless of
-  // how many analyse()/newGame() calls are already pending.
+  // Internal serial queue: only one `go` in flight at a time, regardless of how
+  // many analyse()/newGame() calls are already pending. A job that runs after
+  // quit() rejects immediately rather than talking to a terminated worker.
   let queue: Promise<void> = Promise.resolve();
   function enqueue<T>(job: () => Promise<T>): Promise<T> {
-    const result = queue.then(job, job);
+    const run = () =>
+      terminated ? Promise.reject(new Error("stockfish: engine quit")) : job();
+    const result = queue.then(run, run);
     queue = result.then(
       () => undefined,
       () => undefined
@@ -85,21 +130,18 @@ export async function createEngine(opts?: EngineOptions): Promise<Engine> {
   }
 
   async function analyseOnce(fen: string): Promise<AnalysisInfo> {
-    const infoPromise = new Promise<ParsedInfo>((resolve, reject) => {
-      let lastInfo: ParsedInfo | null = null;
-      lineHandler = (line) => {
-        if (line.startsWith("bestmove")) {
-          lineHandler = null;
-          if (lastInfo === null || (lastInfo.cp === null && lastInfo.mate === null)) {
-            reject(new Error(`stockfish: no scored "info" line before bestmove (fen: ${fen})`));
-            return;
-          }
-          resolve(lastInfo);
+    let lastInfo: ParsedInfo | null = null;
+    const infoPromise = awaitReply<ParsedInfo>((line, resolve, reject) => {
+      if (line.startsWith("bestmove")) {
+        if (lastInfo === null || (lastInfo.cp === null && lastInfo.mate === null)) {
+          reject(new Error(`stockfish: no scored "info" line before bestmove (fen: ${fen})`));
           return;
         }
-        const parsed = parseInfoLine(line);
-        if (parsed) lastInfo = parsed;
-      };
+        resolve(lastInfo);
+        return;
+      }
+      const parsed = parseInfoLine(line);
+      if (parsed) lastInfo = parsed;
     });
     send(`position fen ${fen}`);
     send(`go depth ${depth}`);
@@ -107,16 +149,24 @@ export async function createEngine(opts?: EngineOptions): Promise<Engine> {
     return { cp: info.cp, mate: info.mate, pv: info.pv };
   }
 
-  async function newGameOnce(): Promise<void> {
-    const readyok = waitForLine((line) => line === "readyok");
+  function newGameOnce(): Promise<void> {
+    const readyok = awaitReply<void>((line, resolve) => {
+      if (line === "readyok") resolve();
+    });
     send("ucinewgame");
     send("isready");
-    await readyok;
+    return readyok;
+  }
+
+  function quit(): void {
+    terminated = true;
+    currentReject?.(new Error("stockfish: engine quit")); // fail the in-flight job (if any)
+    worker.terminate();
   }
 
   return {
     analyse: (fen: string) => enqueue(() => analyseOnce(fen)),
     newGame: () => enqueue(newGameOnce),
-    quit: () => worker.terminate(),
+    quit,
   };
 }
