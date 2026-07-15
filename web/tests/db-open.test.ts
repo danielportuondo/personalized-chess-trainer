@@ -9,11 +9,12 @@ afterEach(async () => {
 });
 
 describe("openTrainerDb", () => {
-  it("creates all three object stores, each with a by_username index", async () => {
+  it("creates all four object stores, three with a by_username index", async () => {
     const db = await openTrainerDb();
 
     expect(Array.from(db.objectStoreNames).sort()).toEqual([
       "analyses",
+      "meta",
       "puzzles",
       "reviewState",
     ]);
@@ -41,6 +42,7 @@ describe("openTrainerDb", () => {
     expect(db2.version).toBe(DB_VERSION);
     expect(Array.from(db2.objectStoreNames).sort()).toEqual([
       "analyses",
+      "meta",
       "puzzles",
       "reviewState",
     ]);

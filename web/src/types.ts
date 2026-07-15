@@ -46,6 +46,14 @@ export interface ReviewState {
   lastReviewed?: string;
 }
 
+export interface Meta {
+  username: string;
+  xp: number; // lifetime puzzles solved (passed)
+  currentStreak: number; // consecutive active days
+  bestStreak: number;
+  lastActiveDate: string; // ISO YYYY-MM-DD; "" when never active
+}
+
 export interface GroupRow {
   key: string;
   n: number;

@@ -1,9 +1,9 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import type { MoveEval, Puzzle, ReviewState } from "./types";
+import type { Meta, MoveEval, Puzzle, ReviewState } from "./types";
 import { sm2Update } from "./review";
 
 export const DB_NAME = "chess-trainer";
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 export interface TrainerSchema extends DBSchema {
   analyses: {
@@ -26,6 +26,7 @@ export interface TrainerSchema extends DBSchema {
     value: ReviewState & { username: string; dedupeKey: string };
     indexes: { by_username: string };
   };
+  meta: { key: string; value: Meta };
 }
 
 export async function getAnalyzedGameUrls(
@@ -113,23 +114,57 @@ export async function recordResult(
   return next;
 }
 
-export function openTrainerDb(): Promise<IDBPDatabase<TrainerSchema>> {
-  return openDB<TrainerSchema>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      const analyses = db.createObjectStore("analyses", {
-        keyPath: ["username", "gameUrl"],
-      });
-      analyses.createIndex("by_username", "username");
+export async function getMeta(
+  db: IDBPDatabase<TrainerSchema>,
+  username: string,
+): Promise<Meta> {
+  const record = await db.get("meta", username);
+  return (
+    record ?? {
+      username,
+      xp: 0,
+      currentStreak: 0,
+      bestStreak: 0,
+      lastActiveDate: "",
+    }
+  );
+}
 
-      const puzzles = db.createObjectStore("puzzles", {
-        keyPath: ["username", "dedupeKey"],
-      });
-      puzzles.createIndex("by_username", "username");
+export async function putMeta(
+  db: IDBPDatabase<TrainerSchema>,
+  meta: Meta,
+): Promise<void> {
+  await db.put("meta", meta);
+}
 
-      const reviewState = db.createObjectStore("reviewState", {
-        keyPath: ["username", "dedupeKey"],
-      });
-      reviewState.createIndex("by_username", "username");
+export async function openTrainerDb(): Promise<IDBPDatabase<TrainerSchema>> {
+  const db = await openDB<TrainerSchema>(DB_NAME, DB_VERSION, {
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
+        const analyses = db.createObjectStore("analyses", {
+          keyPath: ["username", "gameUrl"],
+        });
+        analyses.createIndex("by_username", "username");
+
+        const puzzles = db.createObjectStore("puzzles", {
+          keyPath: ["username", "dedupeKey"],
+        });
+        puzzles.createIndex("by_username", "username");
+
+        const reviewState = db.createObjectStore("reviewState", {
+          keyPath: ["username", "dedupeKey"],
+        });
+        reviewState.createIndex("by_username", "username");
+      }
+      if (oldVersion < 2) {
+        db.createObjectStore("meta", { keyPath: "username" });
+      }
     },
+    blocked() {},
+    blocking() {
+      db.close();
+    },
+    terminated() {},
   });
+  return db;
 }
