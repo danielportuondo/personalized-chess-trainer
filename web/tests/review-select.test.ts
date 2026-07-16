@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { selectDuePuzzles, puzzleWeight } from "../src/review";
+import { selectDuePuzzles, puzzleWeight, dueCandidates } from "../src/review";
 import type { Puzzle, ReviewState, WeaknessSummary } from "../src/types";
 
 const pz = (o: Partial<Puzzle>): Puzzle => ({
@@ -70,6 +70,24 @@ describe("selectDuePuzzles", () => {
     const result = selectDuePuzzles(puzzles, {}, emptySummary, today, 15);
     expect(result.length).toBe(15);
     expect(new Set(result.map((p) => p.dedupeKey)).size).toBe(15);
+  });
+});
+
+describe("dueCandidates", () => {
+  const today = "2026-01-10";
+
+  it("includes puzzles with no review and those due today or earlier; excludes not-yet-due", () => {
+    const pNew = pz({ dedupeKey: "new" });
+    const pPast = pz({ dedupeKey: "past" });
+    const pDueToday = pz({ dedupeKey: "today" });
+    const pFuture = pz({ dedupeKey: "future" });
+    const reviewByKey: Record<string, ReviewState> = {
+      past: review("2026-01-05"),
+      today: review("2026-01-10"),
+      future: review("2026-01-15"),
+    };
+    const result = dueCandidates([pNew, pPast, pDueToday, pFuture], reviewByKey, today);
+    expect(result.map((p) => p.dedupeKey).sort()).toEqual(["new", "past", "today"]);
   });
 });
 

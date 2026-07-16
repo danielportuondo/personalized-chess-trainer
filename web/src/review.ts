@@ -73,6 +73,20 @@ function weightedSample<T>(items: T[], weights: number[], k: number): T[] {
   return keyed.slice(0, k).map((x) => x.item);
 }
 
+// Candidates for review: puzzles never reviewed, or whose reviewState is due
+// today or earlier. Shared by selectDuePuzzles (weighted drill selection) and
+// the profile screen's due-count badge, so both use the exact same predicate.
+export function dueCandidates(
+  puzzles: Puzzle[],
+  reviewByKey: Record<string, ReviewState>,
+  today: string
+): Puzzle[] {
+  return puzzles.filter((p) => {
+    const r = reviewByKey[p.dedupeKey];
+    return !r || r.dueDate <= today;
+  });
+}
+
 // Port of train.py:89-111. `summary` is supplied by the caller (typically
 // weaknessSummary(puzzles)) rather than recomputed here, so this module has
 // no dependency on profile.ts.
@@ -83,10 +97,7 @@ export function selectDuePuzzles(
   today: string,
   size = 15
 ): Puzzle[] {
-  const candidates = puzzles.filter((p) => {
-    const r = reviewByKey[p.dedupeKey];
-    return !r || r.dueDate <= today;
-  });
+  const candidates = dueCandidates(puzzles, reviewByKey, today);
 
   const ordered = [...candidates].sort((a, b) => {
     const ra = reviewByKey[a.dedupeKey];
