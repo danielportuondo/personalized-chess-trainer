@@ -90,3 +90,25 @@ export function mountStaticBoard(
 export function lockBoard(api: Api): void {
   api.set({ movable: { color: undefined, dests: new Map() }, draggable: { enabled: false } });
 }
+
+// Animates the opponent's scripted reply in a multi-move puzzle. Sets the resulting FEN
+// (rather than a piece hop) so castling/en passant/promotion render correctly, and
+// highlights the moved squares. The board stays locked — the caller re-arms input via
+// armForMove once the animation settles.
+export function playOpponentReply(api: Api, fenAfter: string, moveUci: string): void {
+  const orig = moveUci.slice(0, 2) as Key;
+  const dest = moveUci.slice(2, 4) as Key;
+  api.set({ fen: fenAfter, lastMove: [orig, dest] });
+}
+
+// Re-enables input for the side to move at `fen`, restricting drags to its legal moves.
+// The events.after handler wired at mount survives chessground's config merge, so the same
+// onMove callback keeps firing for every move in the line.
+export function armForMove(api: Api, fen: string): void {
+  const color = turnColorOf(fen);
+  api.set({
+    turnColor: color,
+    movable: { color, dests: legalDests(fen), showDests: true },
+    draggable: { enabled: true },
+  });
+}

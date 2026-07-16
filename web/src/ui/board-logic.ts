@@ -14,9 +14,9 @@
 // - parseSquare(str: SquareName) -> Square (chessops/util); pos.board.get(square) ->
 //   { role, color } | undefined (chessops/board).
 import { Chess } from "chessops/chess";
-import { parseFen } from "chessops/fen";
+import { parseFen, makeFen } from "chessops/fen";
 import { chessgroundDests } from "chessops/compat";
-import { parseSquare } from "chessops/util";
+import { parseSquare, parseUci } from "chessops/util";
 import type { Color, SquareName } from "chessops/types";
 
 function position(fen: string): Chess {
@@ -41,4 +41,70 @@ export function moveToUci(fen: string, orig: string, dest: string): string {
   const backRank = dest[1] === "8" || dest[1] === "1";
   const promotes = movedPiece?.role === "pawn" && backRank;
   return `${orig}${dest}${promotes ? "q" : ""}`;
+}
+
+// Plays a single UCI move onto a position and returns the resulting FEN. Throws
+// on an illegal/unparseable move — callers pass moves already known legal (engine
+// PV tokens, or tokens validated by planSolutionLine).
+export function applyUci(fen: string, uci: string): string {
+  const pos = position(fen);
+  const move = parseUci(uci);
+  if (!move || !pos.isLegal(move)) throw new Error(`illegal move ${uci} in ${fen}`);
+  pos.play(move);
+  return makeFen(pos.toSetup());
+}
+
+// One user move in a multi-move puzzle: the position the user faces, the move they
+// must play, and (for every move except the last) the opponent's scripted reply plus
+// the position it produces. `reply` absent ⟺ this is the final move that solves the puzzle.
+export interface UserMoveStep {
+  fenBefore: string;
+  expectedUci: string;
+  reply?: { uci: string; fenAfter: string };
+}
+
+export interface SolutionPlan {
+  moves: UserMoveStep[]; // 1..maxUserMoves, in play order
+}
+
+// Turns a stored `solutionLineUci` (engine PV: user, opponent, user, … alternating from
+// the side to move) into the sequence the drill plays. Caps at `maxUserMoves` user moves;
+// stops early on a short line or an illegal token (guards hand-authored data). The last
+// move never carries a reply — the puzzle ends the instant the user completes it, so the
+// opponent's response to it is irrelevant.
+export function planSolutionLine(
+  fen: string,
+  solutionLineUci: string,
+  maxUserMoves = 3,
+): SolutionPlan {
+  const pos = position(fen);
+  const tokens = solutionLineUci.trim().split(/\s+/).filter(Boolean);
+  const moves: UserMoveStep[] = [];
+
+  for (let i = 0; i < tokens.length && moves.length < maxUserMoves; i += 2) {
+    const userMove = parseUci(tokens[i]);
+    if (!userMove || !pos.isLegal(userMove)) break;
+    const fenBefore = makeFen(pos.toSetup());
+    pos.play(userMove);
+    const step: UserMoveStep = { fenBefore, expectedUci: tokens[i] };
+
+    const replyUci = tokens[i + 1];
+    if (replyUci !== undefined) {
+      const replyMove = parseUci(replyUci);
+      if (!replyMove || !pos.isLegal(replyMove)) {
+        // Illegal opponent token: present this user move as the final one, stop here.
+        moves.push(step);
+        break;
+      }
+      pos.play(replyMove);
+      step.reply = { uci: replyUci, fenAfter: makeFen(pos.toSetup()) };
+    }
+    moves.push(step);
+  }
+
+  // The user never sees the opponent respond to their final move.
+  const last = moves[moves.length - 1];
+  if (last) last.reply = undefined;
+
+  return { moves };
 }

@@ -1,7 +1,8 @@
 import type { AppContext } from "../app";
 import { el, mount } from "../dom";
-import { mountPuzzleBoard, drawBestMove, lockBoard } from "../board";
-import { turnColorOf, moveToUci } from "../board-logic";
+import { mountPuzzleBoard, drawBestMove, lockBoard, playOpponentReply, armForMove } from "../board";
+import { turnColorOf, moveToUci, planSolutionLine } from "../board-logic";
+import type { UserMoveStep } from "../board-logic";
 import { celebratePop, elementOrigin } from "../celebrate";
 import { getAllPuzzles, getReviewByKey, recordResult, recordProgress } from "../../db";
 import { weaknessSummary, REASON, HINT } from "../../profile";
@@ -91,7 +92,18 @@ export function renderDrill(ctx: AppContext): void {
       function renderPuzzle(i: number): void {
         const pz = session[i];
         const color = turnColorOf(pz.fen);
-        let answered = false;
+        // The puzzle plays out its (capped) solution line: user move → scripted opponent
+        // reply → next user move. moves[m].fenBefore is the position facing the user at
+        // each step; the opponent's reply lands exactly on moves[m+1].fenBefore.
+        const plan = planSolutionLine(pz.fen, pz.solutionLineUci);
+        // Fallback keeps a puzzle scorable if the stored line's first token is unparseable
+        // (near-impossible post-pipeline): degrade to a single-move puzzle.
+        const moves: UserMoveStep[] = plan.moves.length
+          ? plan.moves
+          : [{ fenBefore: pz.fen, expectedUci: pz.solutionLineUci.trim().split(/\s+/)[0] ?? pz.bestMoveUci }];
+        let m = 0; // index of the user move currently expected
+        let resolved = false; // puzzle finished (solved or missed)
+        let busy = false; // a move is being processed / the opponent is replying
         let hintUsed = false;
         let api: Api;
 
@@ -100,10 +112,15 @@ export function renderDrill(ctx: AppContext): void {
         const streakEl = el("span", { class: "badge badge--flame", text: `🔥 ${run}` });
         const feedbackEl = el("div", { class: "drill__feedback" });
         const hintTextEl = el("div", { class: "drill__hint" });
+        const moveIndicatorEl = el("p", { class: "drill__move-indicator" });
+        function updateMoveIndicator(): void {
+          moveIndicatorEl.textContent = moves.length > 1 ? `Move ${m + 1} of ${moves.length}` : "";
+        }
+        updateMoveIndicator();
         const hintBtn = el("button", {
           class: "btn btn--ghost btn--hint",
           onClick: () => {
-            if (answered || hintUsed || hintsLeft <= 0) return;
+            if (resolved || hintUsed || hintsLeft <= 0) return;
             hintUsed = true;
             hintsLeft--;
             hintTextEl.replaceChildren(
@@ -116,7 +133,7 @@ export function renderDrill(ctx: AppContext): void {
         // state; called on mount, after each hint, and once a move is played.
         function refreshHintBtn(): void {
           const exhausted = hintsLeft <= 0;
-          hintBtn.disabled = answered || hintUsed || exhausted;
+          hintBtn.disabled = resolved || hintUsed || exhausted;
           hintBtn.textContent = hintUsed
             ? "💡 Hint shown"
             : exhausted
@@ -156,7 +173,7 @@ export function renderDrill(ctx: AppContext): void {
           class: "btn btn--ghost",
           text: "Skip",
           onClick: () => {
-            if (answered) return;
+            if (resolved) return;
             if (run > 0 && !skipArmed) {
               skipArmed = true;
               skipBtn.classList.add("btn--warn");
@@ -170,17 +187,19 @@ export function renderDrill(ctx: AppContext): void {
         });
         const quitBtn = el("button", { class: "btn btn--ghost", text: "Quit", onClick: () => ctx.navigate("profile") });
 
-        async function onMove(orig: string, dest: string): Promise<void> {
-          if (answered) return;
-          answered = true;
+        // Re-triggers a one-shot flash by clearing both flash classes and forcing a reflow
+        // before re-adding — so a mid-line correct move flashes green every time.
+        function flashBoard(kind: "correct" | "miss"): void {
+          boardEl.classList.remove("flash-correct", "flash-miss");
+          void boardEl.offsetWidth;
+          boardEl.classList.add(`flash-${kind}`);
+        }
+
+        // Terminal scoring — runs once per puzzle when it's solved or missed. Records the
+        // single attempt (multi-move puzzles score as one unit) and updates score/streak/dots.
+        async function finalize(passed: boolean): Promise<void> {
+          resolved = true;
           refreshHintBtn();
-
-          // Solve rule matches the Python reference (train.py:157): only the
-          // first move of the solution line counts.
-          const passed = moveToUci(pz.fen, orig, dest) === pz.solutionLineUci.split(" ")[0];
-          lockBoard(api);
-          boardEl.classList.add(passed ? "flash-correct" : "flash-miss");
-
           attempted++;
           if (passed) correct++;
           run = passed ? run + 1 : 0;
@@ -209,26 +228,74 @@ export function renderDrill(ctx: AppContext): void {
               if (streakEl.isConnected) streakEl.classList.add("pop");
             });
           }
+        }
 
-          if (passed) {
-            celebratePop(elementOrigin(boardEl).x, elementOrigin(boardEl).y);
-            feedbackEl.replaceChildren(
-              el("p", { class: "drill__feedback-text drill__feedback-text--correct pop", text: "✓ Correct!" }),
-            );
-            setTimeout(() => {
-              if (!boardEl.isConnected) return; // navigated away during the auto-advance delay
-              advance();
-            }, 900);
-          } else {
-            drawBestMove(api, pz.bestMoveUci.slice(0, 2), pz.bestMoveUci.slice(2, 4));
-            const reason = pz.motif ? REASON[pz.motif] : REASON.other;
-            feedbackEl.replaceChildren(
-              el("p", { class: "drill__feedback-text drill__feedback-text--miss", text: "✗ Not quite." }),
-              el("p", { class: "muted" }, el("span", { text: "Best move: " }), el("span", { class: "notation", text: pz.bestMoveUci })),
-              el("p", { class: "muted", text: reason }),
-              el("button", { class: "btn btn--primary", text: "Next", onClick: () => advance() }),
-            );
+        function solved(): void {
+          celebratePop(elementOrigin(boardEl).x, elementOrigin(boardEl).y);
+          feedbackEl.replaceChildren(
+            el("p", { class: "drill__feedback-text drill__feedback-text--correct pop", text: "✓ Correct!" }),
+          );
+          setTimeout(() => {
+            if (!boardEl.isConnected) return; // navigated away during the auto-advance delay
+            advance();
+          }, 900);
+        }
+
+        function missed(step: UserMoveStep): void {
+          drawBestMove(api, step.expectedUci.slice(0, 2), step.expectedUci.slice(2, 4));
+          // The motif reason describes the puzzle's opening idea, so it only holds for a
+          // first-move miss; deeper in the line, name it as the continuation.
+          const reasonText = m === 0 ? (pz.motif ? REASON[pz.motif] : REASON.other) : "That wasn't the winning continuation.";
+          feedbackEl.replaceChildren(
+            el("p", { class: "drill__feedback-text drill__feedback-text--miss", text: "✗ Not quite." }),
+            el("p", { class: "muted" }, el("span", { text: "Best move: " }), el("span", { class: "notation", text: step.expectedUci })),
+            el("p", { class: "muted", text: reasonText }),
+            el("button", { class: "btn btn--primary", text: "Next", onClick: () => advance() }),
+          );
+        }
+
+        async function onMove(orig: string, dest: string): Promise<void> {
+          if (resolved || busy) return;
+          busy = true;
+          const step = moves[m];
+          const passed = moveToUci(step.fenBefore, orig, dest) === step.expectedUci;
+          const isFinal = m === moves.length - 1;
+
+          if (!passed) {
+            lockBoard(api);
+            flashBoard("miss");
+            await finalize(false);
+            if (!boardEl.isConnected) return;
+            missed(step);
+            return;
           }
+
+          if (isFinal) {
+            lockBoard(api);
+            flashBoard("correct");
+            await finalize(true);
+            if (!boardEl.isConnected) return;
+            solved();
+            return;
+          }
+
+          // Correct but not the last move: brief green flash, then the opponent's scripted
+          // reply animates in and the board re-arms for the next user move. No celebration
+          // yet — the confetti is reserved for completing the whole line.
+          const reply = step.reply!;
+          lockBoard(api);
+          flashBoard("correct");
+          setTimeout(() => {
+            if (!boardEl.isConnected) return;
+            playOpponentReply(api, reply.fenAfter, reply.uci);
+            m++;
+            updateMoveIndicator();
+            setTimeout(() => {
+              if (!boardEl.isConnected) return;
+              armForMove(api, moves[m].fenBefore);
+              busy = false;
+            }, 260);
+          }, 450);
         }
 
         const screen = el(
@@ -249,6 +316,7 @@ export function renderDrill(ctx: AppContext): void {
                 el("span", { class: `turn-flag__dot turn-flag__dot--${color}` }),
                 el("span", { text: `${color === "white" ? "White" : "Black"} to move` }),
               ),
+              moveIndicatorEl,
               el("div", { class: "drill__hint-row" }, hintBtn),
               hintTextEl,
               el("div", { class: "stat-row" }, scoreEl, streakEl),

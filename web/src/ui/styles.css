@@ -698,6 +698,19 @@ body {
   gap: 14px;
 }
 
+/* Multi-move progress ("Move 2 of 3") — collapses entirely on single-move puzzles. */
+.drill__move-indicator {
+  margin: -6px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+}
+
+.drill__move-indicator:empty {
+  display: none;
+}
+
 .drill__feedback {
   min-height: 24px;
   display: flex;
