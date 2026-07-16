@@ -928,6 +928,27 @@ body {
     padding: 14px 20px;
   }
 
+  .tiles {
+    gap: 8px;
+  }
+}
+
+/* Drill layout: the board is the hero. On wide screens give the drill its own
+   wider shell and size the board off viewport HEIGHT (not just width) so it fills
+   the space and stays square. Below 900px the drill stacks and the board reverts
+   to the width-driven base size so it never starves the info card. */
+@media (min-width: 901px) {
+  .app:has(.drill) {
+    max-width: 1240px;
+  }
+
+  .drill__board .board {
+    width: min(72vh, 680px);
+    height: min(72vh, 680px);
+  }
+}
+
+@media (max-width: 900px) {
   .screen.drill {
     flex-direction: column;
     align-items: center;
@@ -936,10 +957,6 @@ body {
   .drill__info {
     width: 100%;
     max-width: min(86vw, 440px);
-  }
-
-  .tiles {
-    gap: 8px;
   }
 }
 
