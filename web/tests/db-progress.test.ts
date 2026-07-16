@@ -26,4 +26,25 @@ describe("recordProgress", () => {
 
     db.close();
   });
+
+  it("threads the session run into a persisted bestRun high-score", async () => {
+    const db = await openTrainerDb();
+
+    await recordProgress(db, "u", true, TODAY, 3);
+    const next = await recordProgress(db, "u", true, TODAY, 4);
+    expect(next.bestRun).toBe(4);
+
+    await recordProgress(db, "u", false, TODAY, 0); // a miss must not lower it
+    const persisted = await getMeta(db, "u");
+    expect(persisted.bestRun).toBe(4);
+
+    db.close();
+  });
+
+  it("defaults bestRun to 0 for a brand-new player", async () => {
+    const db = await openTrainerDb();
+    const meta = await getMeta(db, "fresh");
+    expect(meta.bestRun).toBe(0);
+    db.close();
+  });
 });

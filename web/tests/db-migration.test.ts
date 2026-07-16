@@ -91,6 +91,7 @@ describe("v1 -> v2 migration", () => {
       xp: 0,
       currentStreak: 0,
       bestStreak: 0,
+      bestRun: 0,
       lastActiveDate: "",
     });
 
@@ -106,6 +107,7 @@ describe("getMeta/putMeta", () => {
       xp: 42,
       currentStreak: 3,
       bestStreak: 7,
+      bestRun: 5,
       lastActiveDate: "2026-01-05",
     };
 
@@ -127,6 +129,7 @@ describe("getMeta/putMeta", () => {
       xp: 0,
       currentStreak: 0,
       bestStreak: 0,
+      bestRun: 0,
       lastActiveDate: "",
     });
 

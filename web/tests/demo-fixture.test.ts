@@ -3,7 +3,7 @@ import { Chess } from "chessops/chess";
 import { parseFen } from "chessops/fen";
 import { parseUci } from "chessops/util";
 import type { Move } from "chessops/types";
-import { DEMO_PUZZLES } from "../src/demo/demoFixture";
+import { DEMO_PUZZLES, DEMO_META } from "../src/demo/demoFixture";
 
 function position(fen: string): Chess {
   return Chess.fromSetup(parseFen(fen).unwrap()).unwrap();
@@ -21,6 +21,10 @@ describe("demo fixture", () => {
   it("has unique dedupeKeys", () => {
     const keys = new Set(DEMO_PUZZLES.map((p) => p.dedupeKey));
     expect(keys.size).toBe(DEMO_PUZZLES.length);
+  });
+
+  it("seeds a lived-in best-run high-score", () => {
+    expect(DEMO_META.bestRun).toBe(8);
   });
 
   for (const p of DEMO_PUZZLES) {

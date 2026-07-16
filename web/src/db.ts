@@ -120,15 +120,17 @@ export async function getMeta(
   username: string,
 ): Promise<Meta> {
   const record = await db.get("meta", username);
-  return (
-    record ?? {
-      username,
-      xp: 0,
-      currentStreak: 0,
-      bestStreak: 0,
-      lastActiveDate: "",
-    }
-  );
+  // Backfill bestRun for meta written before the high-score field existed.
+  return record
+    ? { ...record, bestRun: record.bestRun ?? 0 }
+    : {
+        username,
+        xp: 0,
+        currentStreak: 0,
+        bestStreak: 0,
+        bestRun: 0,
+        lastActiveDate: "",
+      };
 }
 
 export async function putMeta(
@@ -143,9 +145,10 @@ export async function recordProgress(
   username: string,
   passed: boolean,
   today: string,
+  run = 0,
 ): Promise<Meta> {
   const prior = await getMeta(db, username);
-  const next = applyReviewToMeta(prior, passed, today);
+  const next = applyReviewToMeta(prior, passed, today, run);
   await putMeta(db, next);
   return next;
 }

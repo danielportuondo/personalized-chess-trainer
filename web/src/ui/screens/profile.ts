@@ -80,7 +80,7 @@ export function renderProfile(ctx: AppContext, params?: unknown): void {
 
       const streak = statTile("tile--flame", "🔥", "Day streak");
       const solved = statTile("tile--xp", "⚡", "Solved");
-      const best = statTile("tile--best", "🏆", "Best streak");
+      const best = statTile("tile--best", "🏆", "Best run");
 
       const startBtn = el(
         "button",
@@ -171,7 +171,7 @@ export function renderProfile(ctx: AppContext, params?: unknown): void {
       // Count-up stats + animate the bars in (both no-op instantly under reduced motion).
       countUp(streak.value, { to: meta.currentStreak, durationMs: 700 });
       countUp(solved.value, { to: meta.xp, durationMs: 900 });
-      countUp(best.value, { to: meta.bestStreak, durationMs: 800 });
+      countUp(best.value, { to: meta.bestRun, durationMs: 800 });
       requestAnimationFrame(() => {
         for (const fill of barFills) fill.style.width = `${fill.dataset.pct}%`;
       });

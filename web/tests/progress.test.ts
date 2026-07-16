@@ -7,6 +7,7 @@ const base = (o: Partial<Meta> = {}): Meta => ({
   xp: 0,
   currentStreak: 0,
   bestStreak: 0,
+  bestRun: 0,
   lastActiveDate: "",
   ...o,
 });
@@ -61,5 +62,33 @@ describe("applyReviewToMeta", () => {
     const next = applyReviewToMeta(prior, true, TODAY);
     expect(next.username).toBe("alice");
     expect(prior).toEqual(snapshot);
+  });
+});
+
+describe("applyReviewToMeta — best run high-score", () => {
+  it("raises bestRun to the session run when it beats the record", () => {
+    const next = applyReviewToMeta(base({ bestRun: 2 }), true, TODAY, 5);
+    expect(next.bestRun).toBe(5);
+  });
+
+  it("does not lower bestRun when the run is shorter than the record", () => {
+    const next = applyReviewToMeta(base({ bestRun: 9 }), true, TODAY, 4);
+    expect(next.bestRun).toBe(9);
+  });
+
+  it("leaves bestRun unchanged on a miss (run reset to 0)", () => {
+    const next = applyReviewToMeta(base({ bestRun: 6 }), false, TODAY, 0);
+    expect(next.bestRun).toBe(6);
+  });
+
+  it("defaults run to 0 when omitted, leaving bestRun untouched", () => {
+    const next = applyReviewToMeta(base({ bestRun: 3 }), true, TODAY);
+    expect(next.bestRun).toBe(3);
+  });
+
+  it("treats a missing prior bestRun as 0 (old records)", () => {
+    const legacy = { username: "u", xp: 0, currentStreak: 0, bestStreak: 0, lastActiveDate: "" } as Meta;
+    const next = applyReviewToMeta(legacy, true, TODAY, 1);
+    expect(next.bestRun).toBe(1);
   });
 });

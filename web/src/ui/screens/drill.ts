@@ -3,7 +3,7 @@ import { el, mount } from "../dom";
 import { mountPuzzleBoard, drawBestMove, lockBoard } from "../board";
 import { turnColorOf, moveToUci } from "../board-logic";
 import { celebratePop, elementOrigin } from "../celebrate";
-import { getAllPuzzles, getReviewByKey, getMeta, recordResult, recordProgress } from "../../db";
+import { getAllPuzzles, getReviewByKey, recordResult, recordProgress } from "../../db";
 import { weaknessSummary, REASON, HINT } from "../../profile";
 import { dueCandidates, selectDuePuzzles } from "../../review";
 import { todayIso } from "../../dates";
@@ -48,8 +48,8 @@ export function renderDrill(ctx: AppContext): void {
   const loadingEl = el("p", { class: "muted", text: "Loading your session…" });
   mount(ctx.root, el("div", { class: "app" }, el("div", { class: "screen" }, loadingEl)));
 
-  Promise.all([getAllPuzzles(db, user), getReviewByKey(db, user), getMeta(db, user)])
-    .then(([puzzles, reviewByKey, meta]) => {
+  Promise.all([getAllPuzzles(db, user), getReviewByKey(db, user)])
+    .then(([puzzles, reviewByKey]) => {
       if (!loadingEl.isConnected) return; // navigated away while loading
 
       const today = todayIso();
@@ -68,8 +68,9 @@ export function renderDrill(ctx: AppContext): void {
       let idx = 0;
       let correct = 0;
       let attempted = 0;
+      let run = 0; // consecutive correct solves this session (the live 🔥)
+      let bestRunThisSession = 0; // peak run reached, reported on the summary
       let hintsLeft = 3;
-      let latestMeta = meta;
       const outcomes: Outcome[] = new Array(session.length).fill(undefined);
 
       function renderDots(currentIdx: number): HTMLElement {
@@ -96,7 +97,7 @@ export function renderDrill(ctx: AppContext): void {
 
         const boardEl = el("div", { class: "board" });
         const scoreEl = el("p", { class: "muted notation", text: `✓ ${correct} / ${attempted}` });
-        const streakEl = el("span", { class: "badge badge--flame", text: `🔥 ${latestMeta.currentStreak}` });
+        const streakEl = el("span", { class: "badge badge--flame", text: `🔥 ${run}` });
         const feedbackEl = el("div", { class: "drill__feedback" });
         const hintTextEl = el("div", { class: "drill__hint" });
         const hintBtn = el("button", {
@@ -132,7 +133,7 @@ export function renderDrill(ctx: AppContext): void {
               correct,
               total: attempted,
               xpGained: correct,
-              streakAfter: latestMeta.currentStreak,
+              bestRun: bestRunThisSession,
               morePending,
             };
             ctx.navigate("summary", result);
@@ -148,12 +149,22 @@ export function renderDrill(ctx: AppContext): void {
           }
         }
 
+        // Skipping breaks the run. Guard it with a one-tap-to-arm confirm so a
+        // run is never lost by accident — but only when there's a run to lose.
+        let skipArmed = false;
         const skipBtn = el("button", {
           class: "btn btn--ghost",
           text: "Skip",
           onClick: () => {
             if (answered) return;
+            if (run > 0 && !skipArmed) {
+              skipArmed = true;
+              skipBtn.classList.add("btn--warn");
+              skipBtn.textContent = `⚠️ Resets 🔥 ${run} — tap to confirm`;
+              return;
+            }
             outcomes[i] = "skip";
+            run = 0;
             advance();
           },
         });
@@ -172,6 +183,8 @@ export function renderDrill(ctx: AppContext): void {
 
           attempted++;
           if (passed) correct++;
+          run = passed ? run + 1 : 0;
+          bestRunThisSession = Math.max(bestRunThisSession, run);
           outcomes[i] = passed ? "correct" : "miss";
           scoreEl.textContent = `✓ ${correct} / ${attempted}`;
           const refreshed = renderDots(i); // reflect this answer on the current dot immediately
@@ -180,7 +193,7 @@ export function renderDrill(ctx: AppContext): void {
 
           try {
             await recordResult(db, user, pz.dedupeKey, passed, today);
-            latestMeta = await recordProgress(db, user, passed, today);
+            await recordProgress(db, user, passed, today, run);
           } catch (err) {
             // Recording failure shouldn't crash the session.
             console.error("Failed to record puzzle result", err);
@@ -188,7 +201,14 @@ export function renderDrill(ctx: AppContext): void {
 
           if (!boardEl.isConnected) return; // navigated away (e.g. Quit) mid-persist
 
-          streakEl.textContent = `🔥 ${latestMeta.currentStreak}`;
+          streakEl.textContent = `🔥 ${run}`;
+          if (passed) {
+            // Restart the pop bounce on the existing badge (no-op under reduced motion).
+            streakEl.classList.remove("pop");
+            requestAnimationFrame(() => {
+              if (streakEl.isConnected) streakEl.classList.add("pop");
+            });
+          }
 
           if (passed) {
             celebratePop(elementOrigin(boardEl).x, elementOrigin(boardEl).y);

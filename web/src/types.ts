@@ -51,6 +51,7 @@ export interface Meta {
   xp: number; // lifetime puzzles solved (passed)
   currentStreak: number; // consecutive active days
   bestStreak: number;
+  bestRun: number; // longest consecutive correct-solve run within a session, ever
   lastActiveDate: string; // ISO YYYY-MM-DD; "" when never active
 }
 

@@ -755,6 +755,18 @@ body {
   opacity: 0.75;
 }
 
+/* Armed "Skip" button — warns that confirming breaks the run. */
+.btn--warn {
+  color: var(--danger-deep);
+  background: rgba(202, 52, 49, 0.1);
+  border-color: rgba(202, 52, 49, 0.4);
+}
+
+.btn--warn:hover {
+  color: var(--danger-deep);
+  background: rgba(202, 52, 49, 0.18);
+}
+
 .drill__hint:empty {
   display: none;
 }

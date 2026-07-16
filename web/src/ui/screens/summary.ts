@@ -7,11 +7,11 @@ export interface SummaryParams {
   correct: number;
   total: number;
   xpGained: number;
-  streakAfter: number;
+  bestRun: number;
   morePending: boolean;
 }
 
-// Params: { correct, total, xpGained, streakAfter, morePending } from the drill
+// Params: { correct, total, xpGained, bestRun, morePending } from the drill
 // session just finished. No params (direct navigation) sends the user back to
 // their profile rather than rendering a meaningless recap.
 export function renderSummary(ctx: AppContext, params?: unknown): void {
@@ -71,7 +71,7 @@ export function renderSummary(ctx: AppContext, params?: unknown): void {
             "div",
             { class: "stat-row" },
             el("span", { class: "badge badge--xp", text: `⚡ +${result.xpGained} XP` }),
-            el("span", { class: "badge badge--flame", text: `🔥 ${result.streakAfter}` }),
+            el("span", { class: "badge badge--flame", text: `🔥 ${result.bestRun}` }),
           ),
         ),
         ...nextBtns,

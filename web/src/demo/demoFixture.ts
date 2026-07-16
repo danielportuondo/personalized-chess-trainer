@@ -137,6 +137,7 @@ export const DEMO_META: Omit<Meta, "lastActiveDate"> = {
   xp: 42,
   currentStreak: 5,
   bestStreak: 12,
+  bestRun: 8,
 };
 
 // Idempotent: puzzles are insert-if-absent (first-wins), and meta is only baked
