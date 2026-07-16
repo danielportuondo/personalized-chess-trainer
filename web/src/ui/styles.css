@@ -335,6 +335,62 @@ body {
   }
 }
 
+/* Drill screen */
+
+.drill {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 32px;
+}
+
+.drill__board {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+}
+
+.drill__info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.drill__feedback {
+  min-height: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.drill__feedback-text {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.drill__feedback-text--correct {
+  color: var(--accent);
+}
+
+.drill__feedback-text--miss {
+  color: var(--danger);
+}
+
+/* Board sizing (load-bearing): Chessground(el) adds the cg-wrap class
+   directly to the element it's given rather than nesting a new wrapper
+   (confirmed in node_modules/chessground/dist/wrap.js:
+   `element.classList.add('cg-wrap')`), and chessground.base.css's .cg-wrap
+   ships with no default width/height (position:relative; display:block
+   only) — cg-container/cg-board then size to 100% of .board. Without an
+   explicit square size here the board renders as a zero-size box. */
+.board {
+  width: min(90vw, 460px);
+  height: min(90vw, 460px);
+}
+
 /* Responsive */
 
 @media (max-width: 720px) {
@@ -344,5 +400,14 @@ body {
 
   .btn--lg {
     padding: 14px 20px;
+  }
+
+  .drill {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .drill__info {
+    width: 100%;
   }
 }
