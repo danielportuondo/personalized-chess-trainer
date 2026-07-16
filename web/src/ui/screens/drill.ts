@@ -96,7 +96,14 @@ export function renderDrill(ctx: AppContext): void {
             };
             ctx.navigate("summary", result);
           } else {
-            renderPuzzle(idx);
+            // renderPuzzle(0) is inside the load .then/.catch, but advances come
+            // from Next/Skip/timeout callbacks with no error boundary — a bad FEN
+            // (near-impossible post-pipeline) would otherwise dead-lock the board.
+            try {
+              renderPuzzle(idx);
+            } catch (err) {
+              renderLoadError(ctx, err);
+            }
           }
         }
 
