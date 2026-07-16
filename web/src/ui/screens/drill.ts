@@ -4,7 +4,7 @@ import { mountPuzzleBoard, drawBestMove, lockBoard } from "../board";
 import { turnColorOf, moveToUci } from "../board-logic";
 import { celebratePop, elementOrigin } from "../celebrate";
 import { getAllPuzzles, getReviewByKey, getMeta, recordResult, recordProgress } from "../../db";
-import { weaknessSummary, REASON } from "../../profile";
+import { weaknessSummary, REASON, HINT } from "../../profile";
 import { dueCandidates, selectDuePuzzles } from "../../review";
 import { todayIso } from "../../dates";
 import type { Api } from "chessground/api";
@@ -68,6 +68,7 @@ export function renderDrill(ctx: AppContext): void {
       let idx = 0;
       let correct = 0;
       let attempted = 0;
+      let hintsLeft = 3;
       let latestMeta = meta;
       const outcomes: Outcome[] = new Array(session.length).fill(undefined);
 
@@ -90,12 +91,38 @@ export function renderDrill(ctx: AppContext): void {
         const pz = session[i];
         const color = turnColorOf(pz.fen);
         let answered = false;
+        let hintUsed = false;
         let api: Api;
 
         const boardEl = el("div", { class: "board" });
         const scoreEl = el("p", { class: "muted notation", text: `✓ ${correct} / ${attempted}` });
         const streakEl = el("span", { class: "badge badge--flame", text: `🔥 ${latestMeta.currentStreak}` });
         const feedbackEl = el("div", { class: "drill__feedback" });
+        const hintTextEl = el("div", { class: "drill__hint" });
+        const hintBtn = el("button", {
+          class: "btn btn--ghost btn--hint",
+          onClick: () => {
+            if (answered || hintUsed || hintsLeft <= 0) return;
+            hintUsed = true;
+            hintsLeft--;
+            hintTextEl.replaceChildren(
+              el("p", { class: "drill__hint-text pop", text: HINT[pz.motif ?? "other"] }),
+            );
+            refreshHintBtn();
+          },
+        });
+        // Reflects the shared session budget plus this puzzle's own used/answered
+        // state; called on mount, after each hint, and once a move is played.
+        function refreshHintBtn(): void {
+          const exhausted = hintsLeft <= 0;
+          hintBtn.disabled = answered || hintUsed || exhausted;
+          hintBtn.textContent = hintUsed
+            ? "💡 Hint shown"
+            : exhausted
+              ? "💡 No hints left"
+              : `💡 Hint · ${hintsLeft} left`;
+        }
+        refreshHintBtn();
         let dotsEl = renderDots(i);
 
         function advance(): void {
@@ -135,6 +162,7 @@ export function renderDrill(ctx: AppContext): void {
         async function onMove(orig: string, dest: string): Promise<void> {
           if (answered) return;
           answered = true;
+          refreshHintBtn();
 
           // Solve rule matches the Python reference (train.py:157): only the
           // first move of the solution line counts.
@@ -201,6 +229,8 @@ export function renderDrill(ctx: AppContext): void {
                 el("span", { class: `turn-flag__dot turn-flag__dot--${color}` }),
                 el("span", { text: `${color === "white" ? "White" : "Black"} to move` }),
               ),
+              el("div", { class: "drill__hint-row" }, hintBtn),
+              hintTextEl,
               el("div", { class: "stat-row" }, scoreEl, streakEl),
               feedbackEl,
               el("div", { class: "stat-row" }, skipBtn, quitBtn),

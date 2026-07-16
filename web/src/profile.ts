@@ -32,6 +32,18 @@ export const REASON: Record<Motif, string> = {
   other: "a stronger move was available",
 };
 
+// Pre-move, encouraging nudges shown when a player asks for a hint mid-puzzle.
+// Deliberately name the THEME, never the move. Defensive motifs (allowed mate,
+// hanging piece) point toward safety — the classifier flags the player's own
+// exposed king / loose piece, so that is what the solver must guard against.
+export const HINT: Record<Motif, string> = {
+  "missed forced mate": "There's a mate in this position — go hunt the king down. 👑",
+  "allowed forced mate": "Careful — danger's in the air. Find the move that keeps you safe.",
+  "hanging piece": "Loose pieces drop. Make sure nothing's hanging before you commit.",
+  "missed win of material": "There's material to be won here — spot the tactic.",
+  other: "Think forcing moves: checks, captures, threats. What's the sharpest try?",
+};
+
 const NONPAWN: Partial<Record<Role, number>> = { knight: 3, bishop: 3, rook: 5, queen: 9 };
 const MATERIAL: Partial<Record<Role, number>> = { pawn: 1, ...NONPAWN };
 const PIECE_VALUES: Record<Role, number> = {

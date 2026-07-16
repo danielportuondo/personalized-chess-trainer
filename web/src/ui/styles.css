@@ -720,6 +720,57 @@ body {
   color: var(--danger-deep);
 }
 
+/* Hint — gold "assist/insight" accent, distinct from green-correct / red-miss /
+   orange-streak. Collapses fully when no hint has been shown yet. */
+.drill__hint-row {
+  display: flex;
+}
+
+.btn--hint {
+  align-self: flex-start;
+  padding: 8px 14px;
+  font-size: 14px;
+  border-radius: var(--r-pill);
+  color: var(--xp-ink);
+  background: rgba(217, 154, 0, 0.08);
+  border-color: rgba(217, 154, 0, 0.35);
+  box-shadow: none;
+}
+
+.btn--hint:hover {
+  background: rgba(217, 154, 0, 0.16);
+  color: var(--xp-ink);
+}
+
+.btn--hint:active {
+  transform: none;
+  box-shadow: none;
+}
+
+.btn--hint:disabled {
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border-color: var(--border);
+  box-shadow: none;
+  opacity: 0.75;
+}
+
+.drill__hint:empty {
+  display: none;
+}
+
+.drill__hint-text {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--r);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--xp-ink);
+  background: rgba(217, 154, 0, 0.1);
+  border: 1px solid rgba(217, 154, 0, 0.3);
+}
+
 .turn-flag {
   display: inline-flex;
   align-items: center;
