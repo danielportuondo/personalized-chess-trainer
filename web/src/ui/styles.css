@@ -1,0 +1,307 @@
+/* Chess Trainer design system — dark, bold, gamified. Token names are stable
+   contracts for Tasks 5-8; Task 8 refines values, not names. */
+
+:root {
+  --bg: #0e0f13;
+  --surface: #171922;
+  --surface-2: #20232f;
+  --border: #2a2e3d;
+  --text: #f2f4f8;
+  --text-dim: #9aa3b2;
+  --accent: #7cf03d; /* primary/energy/correct; text on it = --bg */
+  --flame: #ff8a3d; /* streak fire */
+  --xp: #ffd23d; /* xp/coins */
+  --danger: #ff4d5e; /* miss/error */
+  --r: 14px;
+  --r-lg: 22px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+/* Layout */
+
+.app {
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 24px clamp(16px, 4vw, 40px);
+  display: flex;
+  flex-direction: column;
+}
+
+.screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px 0;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px 24px;
+  box-shadow: var(--shadow);
+}
+
+/* Type */
+
+.title {
+  margin: 0;
+  font-size: clamp(28px, 5vw, 44px);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.stat-value {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.stat-label {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.muted {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+/* Buttons */
+
+.btn {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 12px 20px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    transform 0.08s ease,
+    filter 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.btn:hover {
+  filter: brightness(1.12);
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  box-shadow: 0 4px 16px rgba(124, 240, 61, 0.35);
+}
+
+.btn--primary:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 4px 24px rgba(124, 240, 61, 0.5);
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.btn--ghost:hover {
+  background: var(--surface-2);
+}
+
+.btn--lg {
+  width: 100%;
+  padding: 16px 24px;
+  font-size: 17px;
+  border-radius: var(--r-lg);
+}
+
+/* Gamify */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.badge--flame {
+  color: var(--flame);
+  border-color: rgba(255, 138, 61, 0.4);
+}
+
+.badge--xp {
+  color: var(--xp);
+  border-color: rgba(255, 210, 61, 0.4);
+}
+
+.progress {
+  width: 100%;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.progress__fill {
+  height: 100%;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--xp));
+  animation: progress-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes progress-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bar__track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.bar__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--flame);
+}
+
+/* Input */
+
+.input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 16px;
+  padding: 12px 16px;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.input::placeholder {
+  color: var(--text-dim);
+}
+
+/* Feedback utilities */
+
+.flash-correct {
+  animation: flash-correct 0.4s ease;
+}
+
+.flash-miss {
+  animation: flash-miss 0.4s ease;
+}
+
+@keyframes flash-correct {
+  0% {
+    box-shadow: 0 0 0 6px var(--accent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@keyframes flash-miss {
+  0% {
+    box-shadow: 0 0 0 6px var(--danger);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* Responsive */
+
+@media (max-width: 720px) {
+  .app {
+    padding: 16px;
+  }
+
+  .btn--lg {
+    padding: 14px 20px;
+  }
+}
