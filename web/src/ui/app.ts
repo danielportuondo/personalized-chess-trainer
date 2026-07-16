@@ -1,7 +1,11 @@
+import "@fontsource/montserrat/latin-700.css";
+import "@fontsource/montserrat/latin-800.css";
+import "@fontsource/montserrat/latin-900.css";
 import "./styles.css";
 import type { IDBPDatabase } from "idb";
 import type { TrainerSchema } from "../db";
 import { openTrainerDb } from "../db";
+import { DEMO_DISPLAY_NAME, DEMO_USERNAME, seedDemo } from "../demo/demoFixture";
 import { el, clear, mount } from "./dom";
 import { renderLanding } from "./screens/landing";
 import { renderAnalyzing } from "./screens/analyzing";
@@ -14,9 +18,13 @@ export type ScreenName = "landing" | "analyzing" | "profile" | "drill" | "summar
 export interface AppContext {
   db: IDBPDatabase<TrainerSchema>;
   root: HTMLElement; // the #app element; screens render into this
-  username: string | null; // current handle (lowercased); null until entered
+  username: string | null; // live identity (lowercased handle, or the demo sentinel)
+  isDemo: boolean; // true while viewing the baked demo profile
+  displayName: string | null; // "Demo" in demo mode, else the handle
+  lastHandle: string | null; // persisted real handle (never the demo sentinel)
   navigate(screen: ScreenName, params?: unknown): void;
   setUsername(username: string | null): void; // updates state + persists to localStorage
+  enterDemo(): Promise<void>; // seed + switch into the demo profile (not persisted)
 }
 
 export type ScreenRenderer = (ctx: AppContext, params?: unknown) => void;
@@ -43,8 +51,9 @@ export async function bootApp(): Promise<void> {
     return;
   }
 
-  // Closure variable (not a snapshot) so `ctx.username` stays live across
-  // navigations even though screens hold on to the same `ctx` object.
+  // `username` is the live identity (may be the demo sentinel); the persisted
+  // last handle in localStorage is always a real handle, so entering the demo
+  // doesn't overwrite it. Boot as the last real handle (or null).
   let username: string | null = localStorage.getItem(LAST_HANDLE_KEY);
 
   const ctx: AppContext = {
@@ -52,6 +61,15 @@ export async function bootApp(): Promise<void> {
     root,
     get username() {
       return username;
+    },
+    get isDemo() {
+      return username === DEMO_USERNAME;
+    },
+    get displayName() {
+      return username === DEMO_USERNAME ? DEMO_DISPLAY_NAME : username;
+    },
+    get lastHandle() {
+      return localStorage.getItem(LAST_HANDLE_KEY);
     },
     navigate(screen, params) {
       clear(root);
@@ -68,6 +86,11 @@ export async function bootApp(): Promise<void> {
       } else {
         localStorage.removeItem(LAST_HANDLE_KEY);
       }
+    },
+    async enterDemo() {
+      await seedDemo(db);
+      username = DEMO_USERNAME; // ephemeral — deliberately not persisted
+      ctx.navigate("profile");
     },
   };
 

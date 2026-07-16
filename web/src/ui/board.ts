@@ -56,6 +56,35 @@ export function drawBestMove(api: Api, orig: string, dest: string): void {
   api.setShapes([shape]);
 }
 
+export interface StaticShape {
+  orig: string;
+  dest?: string; // omit for a square highlight (circle); include for an arrow
+  brush: "green" | "red" | "blue" | "yellow";
+}
+
+// Mounts a non-interactive display board (hero / illustration) with annotation
+// shapes drawn on top — used for the landing's "find the better move" thesis.
+export function mountStaticBoard(
+  el: HTMLElement,
+  opts: { fen: string; orientation?: "white" | "black"; shapes?: StaticShape[] },
+): Api {
+  const api = Chessground(el, {
+    fen: opts.fen,
+    orientation: opts.orientation ?? "white",
+    viewOnly: true,
+    coordinates: false,
+    drawable: { enabled: false, visible: true },
+    animation: { enabled: false },
+  });
+  const shapes: DrawShape[] = (opts.shapes ?? []).map((s) => ({
+    orig: s.orig as Key,
+    ...(s.dest ? { dest: s.dest as Key } : {}),
+    brush: s.brush,
+  }));
+  if (shapes.length) api.setAutoShapes(shapes);
+  return api;
+}
+
 // Disables further input once the puzzle has been answered: no movable side, no legal
 // destinations, dragging off.
 export function lockBoard(api: Api): void {

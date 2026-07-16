@@ -2,12 +2,15 @@ import type { AppContext } from "../app";
 import { el, mount } from "../dom";
 import { mountPuzzleBoard, drawBestMove, lockBoard } from "../board";
 import { turnColorOf, moveToUci } from "../board-logic";
+import { celebratePop, elementOrigin } from "../celebrate";
 import { getAllPuzzles, getReviewByKey, getMeta, recordResult, recordProgress } from "../../db";
 import { weaknessSummary, REASON } from "../../profile";
 import { dueCandidates, selectDuePuzzles } from "../../review";
 import { todayIso } from "../../dates";
 import type { Api } from "chessground/api";
 import type { SummaryParams } from "./summary";
+
+type Outcome = "correct" | "miss" | "skip" | undefined;
 
 function renderLoadError(ctx: AppContext, err: unknown): void {
   const message = err instanceof Error ? err.message : String(err);
@@ -26,19 +29,14 @@ function renderLoadError(ctx: AppContext, err: unknown): void {
           el("p", { class: "subtitle", text: "Something went wrong" }),
           el("p", { class: "muted", text: message }),
         ),
-        el("button", {
-          class: "btn btn--ghost",
-          text: "Back to profile",
-          onClick: () => ctx.navigate("profile"),
-        }),
+        el("button", { class: "btn btn--ghost", text: "Back to profile", onClick: () => ctx.navigate("profile") }),
       ),
     ),
   );
 }
 
-// Params: none — this screen builds its own puzzle session from
-// puzzles/reviewState/meta (mirrors profile.ts's self-loading pattern) rather
-// than being handed one by the caller.
+// Params: none — builds its own session from puzzles/reviewState/meta (mirrors
+// profile.ts's self-loading pattern) rather than being handed one by the caller.
 export function renderDrill(ctx: AppContext): void {
   if (!ctx.username) {
     ctx.navigate("landing");
@@ -52,7 +50,7 @@ export function renderDrill(ctx: AppContext): void {
 
   Promise.all([getAllPuzzles(db, user), getReviewByKey(db, user), getMeta(db, user)])
     .then(([puzzles, reviewByKey, meta]) => {
-      if (!loadingEl.isConnected) return; // user navigated away while loading
+      if (!loadingEl.isConnected) return; // navigated away while loading
 
       const today = todayIso();
       const summary = weaknessSummary(puzzles);
@@ -65,13 +63,28 @@ export function renderDrill(ctx: AppContext): void {
         return;
       }
 
-      // All session state lives in these locals (not module scope) so a fresh
-      // renderDrill() call — e.g. "Keep drilling" from the summary screen —
-      // always starts a clean session.
+      // All session state lives in these locals so a fresh renderDrill() call —
+      // e.g. "Keep drilling" from the summary — always starts clean.
       let idx = 0;
       let correct = 0;
       let attempted = 0;
-      let latestMeta = meta; // falls back to the loaded meta until a result is recorded
+      let latestMeta = meta;
+      const outcomes: Outcome[] = new Array(session.length).fill(undefined);
+
+      function renderDots(currentIdx: number): HTMLElement {
+        return el(
+          "div",
+          { class: "dots" },
+          ...session.map((_, i) => {
+            const o = outcomes[i];
+            let cls = "dot";
+            if (o === "correct") cls += " dot--correct";
+            else if (o === "miss") cls += " dot--miss";
+            else if (i === currentIdx) cls += " dot--current";
+            return el("div", { class: cls });
+          }),
+        );
+      }
 
       function renderPuzzle(i: number): void {
         const pz = session[i];
@@ -80,9 +93,10 @@ export function renderDrill(ctx: AppContext): void {
         let api: Api;
 
         const boardEl = el("div", { class: "board" });
-        const scoreEl = el("p", { class: "muted", text: `✓ ${correct}/${attempted}` });
+        const scoreEl = el("p", { class: "muted notation", text: `✓ ${correct} / ${attempted}` });
         const streakEl = el("span", { class: "badge badge--flame", text: `🔥 ${latestMeta.currentStreak}` });
         const feedbackEl = el("div", { class: "drill__feedback" });
+        let dotsEl = renderDots(i);
 
         function advance(): void {
           idx = i + 1;
@@ -96,9 +110,9 @@ export function renderDrill(ctx: AppContext): void {
             };
             ctx.navigate("summary", result);
           } else {
-            // renderPuzzle(0) is inside the load .then/.catch, but advances come
-            // from Next/Skip/timeout callbacks with no error boundary — a bad FEN
-            // (near-impossible post-pipeline) would otherwise dead-lock the board.
+            // Advances come from Next/Skip/timeout callbacks with no error
+            // boundary — a bad FEN (near-impossible post-pipeline) would deadlock
+            // the board, so guard it.
             try {
               renderPuzzle(idx);
             } catch (err) {
@@ -110,13 +124,13 @@ export function renderDrill(ctx: AppContext): void {
         const skipBtn = el("button", {
           class: "btn btn--ghost",
           text: "Skip",
-          onClick: () => advance(), // no recording — correct/attempted untouched
+          onClick: () => {
+            if (answered) return;
+            outcomes[i] = "skip";
+            advance();
+          },
         });
-        const quitBtn = el("button", {
-          class: "btn btn--ghost",
-          text: "Quit",
-          onClick: () => ctx.navigate("profile"),
-        });
+        const quitBtn = el("button", { class: "btn btn--ghost", text: "Quit", onClick: () => ctx.navigate("profile") });
 
         async function onMove(orig: string, dest: string): Promise<void> {
           if (answered) return;
@@ -130,14 +144,17 @@ export function renderDrill(ctx: AppContext): void {
 
           attempted++;
           if (passed) correct++;
-          scoreEl.textContent = `✓ ${correct}/${attempted}`;
+          outcomes[i] = passed ? "correct" : "miss";
+          scoreEl.textContent = `✓ ${correct} / ${attempted}`;
+          const refreshed = renderDots(i); // reflect this answer on the current dot immediately
+          dotsEl.replaceWith(refreshed);
+          dotsEl = refreshed;
 
           try {
             await recordResult(db, user, pz.dedupeKey, passed, today);
             latestMeta = await recordProgress(db, user, passed, today);
           } catch (err) {
-            // Recording failure shouldn't crash the session — the puzzle was
-            // still answered and the user should keep drilling.
+            // Recording failure shouldn't crash the session.
             console.error("Failed to record puzzle result", err);
           }
 
@@ -146,8 +163,9 @@ export function renderDrill(ctx: AppContext): void {
           streakEl.textContent = `🔥 ${latestMeta.currentStreak}`;
 
           if (passed) {
+            celebratePop(elementOrigin(boardEl).x, elementOrigin(boardEl).y);
             feedbackEl.replaceChildren(
-              el("p", { class: "drill__feedback-text drill__feedback-text--correct", text: "✓ Correct!" }),
+              el("p", { class: "drill__feedback-text drill__feedback-text--correct pop", text: "✓ Correct!" }),
             );
             setTimeout(() => {
               if (!boardEl.isConnected) return; // navigated away during the auto-advance delay
@@ -158,7 +176,7 @@ export function renderDrill(ctx: AppContext): void {
             const reason = pz.motif ? REASON[pz.motif] : REASON.other;
             feedbackEl.replaceChildren(
               el("p", { class: "drill__feedback-text drill__feedback-text--miss", text: "✗ Not quite." }),
-              el("p", { class: "muted", text: `Best move: ${pz.bestMoveUci}` }),
+              el("p", { class: "muted" }, el("span", { text: "Best move: " }), el("span", { class: "notation", text: pz.bestMoveUci })),
               el("p", { class: "muted", text: reason }),
               el("button", { class: "btn btn--primary", text: "Next", onClick: () => advance() }),
             );
@@ -175,8 +193,14 @@ export function renderDrill(ctx: AppContext): void {
             el(
               "div",
               { class: "drill__info card" },
-              el("p", { class: "stat-label", text: `Puzzle ${i + 1} / ${session.length}` }),
-              el("p", { class: "subtitle", text: `${color === "white" ? "White" : "Black"} to move` }),
+              el("p", { class: "stat-label", text: `Puzzle ${i + 1} of ${session.length}` }),
+              dotsEl,
+              el(
+                "div",
+                { class: "turn-flag" },
+                el("span", { class: `turn-flag__dot turn-flag__dot--${color}` }),
+                el("span", { text: `${color === "white" ? "White" : "Black"} to move` }),
+              ),
               el("div", { class: "stat-row" }, scoreEl, streakEl),
               feedbackEl,
               el("div", { class: "stat-row" }, skipBtn, quitBtn),
@@ -184,9 +208,8 @@ export function renderDrill(ctx: AppContext): void {
           ),
         );
 
-        // Mount into the live DOM FIRST — chessground measures the wrap
-        // element's rendered size at construction time, so it must already
-        // be attached before mountPuzzleBoard runs.
+        // Mount into the live DOM FIRST — chessground measures the wrap element's
+        // rendered size at construction time, so it must already be attached.
         mount(ctx.root, screen);
         api = mountPuzzleBoard(boardEl, { fen: pz.fen, onMove });
       }
@@ -194,7 +217,7 @@ export function renderDrill(ctx: AppContext): void {
       renderPuzzle(0);
     })
     .catch((err) => {
-      if (!loadingEl.isConnected) return; // user navigated away while loading
+      if (!loadingEl.isConnected) return; // navigated away while loading
       renderLoadError(ctx, err);
     });
 }

@@ -1,21 +1,46 @@
-/* Chess Trainer design system — dark, bold, gamified. Token names are stable
-   contracts for Tasks 5-8; Task 8 refines values, not names. */
+/* Chess Trainer design system — chess.com-flavored LIGHT theme, board-forward,
+   playful. Token NAMES are a stable contract (screens/components reference them);
+   values realize the light "classic chess.com" look. Motion is opt-out via
+   prefers-reduced-motion. */
 
 :root {
-  --bg: #0e0f13;
-  --surface: #171922;
-  --surface-2: #20232f;
-  --border: #2a2e3d;
-  --text: #f2f4f8;
-  --text-dim: #9aa3b2;
-  --accent: #7cf03d; /* primary/energy/correct; text on it = --bg */
-  --flame: #ff8a3d; /* streak fire */
-  --xp: #ffd23d; /* xp/coins */
-  --danger: #ff4d5e; /* miss/error */
-  --r: 14px;
-  --r-lg: 22px;
+  /* Surfaces — warm board-cream paper + white cards (chess.com light) */
+  --bg: #f4f2ea;
+  --bg-2: #eceadf;
+  --surface: #ffffff;
+  --surface-2: #f3f1e9;
+  --border: #ded9cb;
+  --border-strong: #cfc9b8;
+
+  /* Ink — warm near-black, piece-dark */
+  --text: #26241f;
+  --text-dim: #6d675c;
+
+  /* Chess move-quality vocabulary (the app's color language) */
+  --accent: #81b64c; /* chess.com "best/green" — primary/energy/correct */
+  --accent-deep: #5c8a34; /* pressed edge + text-on-light */
+  --accent-ink: #3d5c22; /* accent text on light surfaces (contrast-safe) */
+  --brilliant: #16a394; /* chess.com "brilliant" teal — secondary accent */
+  --danger: #ca3431; /* "blunder" red */
+  --danger-deep: #a02724;
+  --flame: #e8752a; /* streak fire */
+  --xp: #d99a00; /* xp / gold */
+
+  /* Radii */
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 20px;
+  --r-pill: 999px;
+
+  /* Type */
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  --font-display: "Montserrat", var(--font); /* headings, stat values */
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; /* chess notation + data */
+
+  /* Elevation — soft, light-theme */
+  --shadow-sm: 0 1px 2px rgba(38, 36, 31, 0.06);
+  --shadow: 0 2px 6px rgba(38, 36, 31, 0.06), 0 12px 28px rgba(38, 36, 31, 0.08);
+  --shadow-lift: 0 6px 16px rgba(38, 36, 31, 0.1), 0 20px 44px rgba(38, 36, 31, 0.12);
 }
 
 *,
@@ -32,9 +57,14 @@ body {
 
 body {
   background: var(--bg);
+  /* faint board-diagonal wash — subject-grounded, barely-there texture */
+  background-image: radial-gradient(circle at 100% 0%, rgba(129, 182, 76, 0.06), transparent 45%),
+    radial-gradient(circle at 0% 100%, rgba(22, 163, 148, 0.05), transparent 40%);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
 #app {
@@ -45,10 +75,10 @@ body {
 
 .app {
   width: 100%;
-  max-width: 880px;
+  max-width: 960px;
   margin: 0 auto;
   min-height: 100vh;
-  padding: 24px clamp(16px, 4vw, 40px);
+  padding: 28px clamp(16px, 4vw, 44px);
   display: flex;
   flex-direction: column;
 }
@@ -58,47 +88,84 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 20px;
-  padding: 24px 0;
+  gap: 22px;
+  padding: 20px 0;
 }
 
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  padding: 20px 24px;
+  padding: 22px 24px;
   box-shadow: var(--shadow);
+}
+
+/* Brand / wordmark */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+
+.brand__mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: 20px;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.14);
 }
 
 /* Type */
 
+.eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--accent-ink);
+}
+
 .title {
   margin: 0;
-  font-size: clamp(28px, 5vw, 44px);
+  font-family: var(--font-display);
+  font-size: clamp(30px, 5.2vw, 52px);
   font-weight: 900;
-  letter-spacing: -0.02em;
-  line-height: 1.05;
+  letter-spacing: -0.03em;
+  line-height: 1.03;
 }
 
 .subtitle {
   margin: 0;
-  font-size: 16px;
+  font-size: clamp(15px, 1.7vw, 18px);
   font-weight: 500;
   color: var(--text-dim);
+  line-height: 1.5;
 }
 
 .stat-value {
   margin: 0;
-  font-size: 40px;
+  font-family: var(--font-display);
+  font-size: 42px;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  letter-spacing: -0.02em;
 }
 
 .stat-label {
   margin: 4px 0 0;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-dim);
@@ -108,61 +175,86 @@ body {
   margin: 0;
   font-size: 14px;
   color: var(--text-dim);
+  line-height: 1.5;
 }
 
-/* Buttons */
+.notation {
+  font-family: var(--mono);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Buttons — chess.com pressable style (solid bottom edge that compresses) */
 
 .btn {
-  font-family: inherit;
+  font-family: var(--font-display);
   font-size: 15px;
   font-weight: 800;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r);
   padding: 12px 20px;
-  background: var(--surface-2);
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
+  box-shadow: 0 2px 0 var(--border-strong);
   transition:
-    transform 0.08s ease,
+    transform 0.06s ease,
+    box-shadow 0.12s ease,
     filter 0.15s ease,
-    box-shadow 0.15s ease;
+    background 0.15s ease;
 }
 
 .btn:hover {
-  filter: brightness(1.12);
+  filter: brightness(0.99);
+  background: var(--surface-2);
 }
 
 .btn:active {
-  transform: scale(0.97);
+  transform: translateY(2px);
+  box-shadow: 0 0 0 var(--border-strong);
 }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+  box-shadow: 0 2px 0 var(--border-strong);
   filter: none;
 }
 
 .btn--primary {
   background: var(--accent);
-  border-color: var(--accent);
-  color: var(--bg);
-  box-shadow: 0 4px 16px rgba(124, 240, 61, 0.35);
+  border-color: var(--accent-deep);
+  color: #fff;
+  box-shadow: 0 3px 0 var(--accent-deep);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
 }
 
 .btn--primary:hover {
-  filter: brightness(1.08);
-  box-shadow: 0 4px 24px rgba(124, 240, 61, 0.5);
+  background: #8cc257;
+  filter: none;
+}
+
+.btn--primary:active {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 var(--accent-deep);
 }
 
 .btn--ghost {
   background: transparent;
-  border-color: var(--border);
-  color: var(--text);
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--text-dim);
 }
 
 .btn--ghost:hover {
   background: var(--surface-2);
+  color: var(--text);
+}
+
+.btn--ghost:active {
+  transform: none;
+  box-shadow: none;
 }
 
 .btn--lg {
@@ -172,14 +264,53 @@ body {
   border-radius: var(--r-lg);
 }
 
-/* Gamify */
+.btn__note {
+  display: block;
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.85;
+  margin-top: 3px;
+}
+
+.btn:focus-visible,
+.input:focus-visible {
+  outline: 3px solid var(--brilliant);
+  outline-offset: 2px;
+}
+
+/* Input */
+
+.input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 16px;
+  padding: 13px 16px;
+  border-radius: var(--r);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm) inset;
+}
+
+.input:focus {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.input::placeholder {
+  color: var(--text-dim);
+}
+
+/* Gamify — badges + big stat tiles */
 
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font-size: 13px;
   font-weight: 800;
   background: var(--surface-2);
@@ -188,18 +319,68 @@ body {
 
 .badge--flame {
   color: var(--flame);
-  border-color: rgba(255, 138, 61, 0.4);
+  border-color: rgba(232, 117, 42, 0.35);
+  background: rgba(232, 117, 42, 0.08);
 }
 
 .badge--xp {
   color: var(--xp);
-  border-color: rgba(255, 210, 61, 0.4);
+  border-color: rgba(217, 154, 0, 0.35);
+  background: rgba(217, 154, 0, 0.08);
 }
+
+.stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 18px 16px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.tile__icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.tile__value {
+  margin: 8px 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(30px, 5vw, 40px);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.tile--flame .tile__value {
+  color: var(--flame);
+}
+.tile--xp .tile__value {
+  color: var(--xp);
+}
+.tile--best .tile__value {
+  color: var(--accent-ink);
+}
+
+/* Weakness "report card" bars */
 
 .progress {
   width: 100%;
   height: 14px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   border: 1px solid var(--border);
   overflow: hidden;
@@ -209,12 +390,10 @@ body {
   height: 100%;
   width: 0%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent), var(--xp));
-  transition: width 0.2s ease;
+  background: linear-gradient(90deg, var(--accent), var(--brilliant));
+  transition: width 0.25s ease;
 }
 
-/* Shown before real progress is known (e.g. fetch phase, no onProgress events
-   yet): a partial-width fill that pulses to read as "working". */
 .progress--indeterminate .progress__fill {
   width: 35%;
   animation: progress-pulse 1.4s ease-in-out infinite;
@@ -223,33 +402,54 @@ body {
 @keyframes progress-pulse {
   0%,
   100% {
-    opacity: 0.85;
+    opacity: 0.7;
+    transform: translateX(-8%);
   }
   50% {
     opacity: 1;
+    transform: translateX(110%);
   }
 }
 
-.stat-row {
+.insight {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--r);
+  background: rgba(202, 52, 49, 0.07);
+  border: 1px solid rgba(202, 52, 49, 0.2);
+}
+
+.insight__icon {
+  font-size: 22px;
+}
+
+.insight__text {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.insight__text strong {
+  color: var(--danger-deep);
 }
 
 .bar-group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .bar-group + .bar-group {
-  margin-top: 18px;
+  margin-top: 20px;
 }
 
 .bar {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 
 .bar__label {
@@ -261,10 +461,17 @@ body {
   font-weight: 700;
 }
 
+.bar__meta {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
 .bar__track {
   width: 100%;
-  height: 8px;
-  border-radius: 999px;
+  height: 10px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   border: 1px solid var(--border);
   overflow: hidden;
@@ -272,49 +479,20 @@ body {
 
 .bar__fill {
   height: 100%;
+  width: 0;
   border-radius: inherit;
-  background: var(--flame);
+  background: linear-gradient(90deg, var(--flame), var(--danger));
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Second line inside a .btn--lg (e.g. due-count under the primary CTA label). */
-.btn__note {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  opacity: 0.75;
-  margin-top: 2px;
-}
-
-/* Input */
-
-.input {
-  width: 100%;
-  font-family: inherit;
-  font-size: 16px;
-  padding: 12px 16px;
-  border-radius: var(--r);
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text);
-}
-
-.input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.input::placeholder {
-  color: var(--text-dim);
-}
-
-/* Feedback utilities */
+/* Feedback flashes (box-shadow ring pulled from tokens → re-tints automatically) */
 
 .flash-correct {
-  animation: flash-correct 0.4s ease;
+  animation: flash-correct 0.45s ease;
 }
 
 .flash-miss {
-  animation: flash-miss 0.4s ease;
+  animation: flash-miss 0.45s ease;
 }
 
 @keyframes flash-correct {
@@ -335,10 +513,168 @@ body {
   }
 }
 
+/* Move-quality badges — best / blunder / brilliant vocabulary */
+
+.mq {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: var(--r-pill);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mq--best {
+  color: var(--accent-ink);
+  background: rgba(129, 182, 76, 0.16);
+}
+
+.mq--blunder {
+  color: var(--danger-deep);
+  background: rgba(202, 52, 49, 0.12);
+}
+
+.mq--brilliant {
+  color: #0c7a6e;
+  background: rgba(22, 163, 148, 0.14);
+}
+
+/* Hero (landing) */
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  align-items: center;
+  gap: clamp(24px, 5vw, 56px);
+}
+
+.hero__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.hero__cta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.hero__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.hero__divider::before,
+.hero__divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.trust {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.hero__demo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Board framing (light theme): a subtle frame + caption for the position */
+
+.board-frame {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.board {
+  width: min(86vw, 440px);
+  height: min(86vw, 440px);
+  border-radius: var(--r);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lift);
+}
+
+.board-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+/* Eval swing chips — the signature: blunder value → best value */
+
+.eval-swing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.eval-chip {
+  padding: 3px 9px;
+  border-radius: var(--r-sm);
+}
+
+.eval-chip--bad {
+  color: var(--danger-deep);
+  background: rgba(202, 52, 49, 0.12);
+}
+
+.eval-chip--good {
+  color: var(--accent-ink);
+  background: rgba(129, 182, 76, 0.18);
+}
+
+.eval-swing__arrow {
+  color: var(--text-dim);
+}
+
+/* Demo banner */
+
+.demo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-radius: var(--r);
+  background: rgba(22, 163, 148, 0.1);
+  border: 1px solid rgba(22, 163, 148, 0.28);
+}
+
+.demo-banner__text {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0c7a6e;
+}
+
 /* Drill screen */
 
-/* .screen.drill (not bare .drill) so this reliably overrides .screen's
-   flex-direction:column regardless of CSS source order. */
 .screen.drill {
   flex-direction: row;
   align-items: flex-start;
@@ -355,6 +691,7 @@ body {
 .drill__info {
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 380px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -369,35 +706,170 @@ body {
 
 .drill__feedback-text {
   margin: 0;
-  font-size: 18px;
+  font-family: var(--font-display);
+  font-size: 20px;
   font-weight: 800;
 }
 
 .drill__feedback-text--correct {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .drill__feedback-text--miss {
-  color: var(--danger);
+  color: var(--danger-deep);
 }
 
-/* Board sizing (load-bearing): Chessground(el) adds the cg-wrap class
-   directly to the element it's given rather than nesting a new wrapper
-   (confirmed in node_modules/chessground/dist/wrap.js:
-   `element.classList.add('cg-wrap')`), and chessground.base.css's .cg-wrap
-   ships with no default width/height (position:relative; display:block
-   only) — cg-container/cg-board then size to 100% of .board. Without an
-   explicit square size here the board renders as a zero-size box. */
-.board {
-  width: min(90vw, 460px);
-  height: min(90vw, 460px);
+.turn-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.turn-flag__dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+}
+
+.turn-flag__dot--white {
+  background: #fff;
+}
+
+.turn-flag__dot--black {
+  background: #2b2926;
+}
+
+/* Session progress dots */
+
+.dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+}
+
+.dot--correct {
+  background: var(--accent);
+  border-color: var(--accent-deep);
+}
+
+.dot--miss {
+  background: var(--danger);
+  border-color: var(--danger-deep);
+}
+
+.dot--current {
+  box-shadow: 0 0 0 3px rgba(22, 163, 148, 0.3);
+  border-color: var(--brilliant);
+}
+
+/* Accuracy dial (summary) — @property makes the conic-gradient animatable
+   (browsers without @property just snap to the final value). */
+
+@property --pct {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+.summary-card {
+  text-align: center;
+}
+
+.summary-card .stat-row {
+  justify-content: center;
+}
+
+.dial {
+  --pct: 0;
+  --dial-color: var(--accent);
+  width: 168px;
+  height: 168px;
+  margin: 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(var(--dial-color) calc(var(--pct) * 1%), var(--surface-2) 0);
+  transition: --pct 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dial__inner {
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.dial__pct {
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.dial__label {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* Confetti canvas overlay */
+
+.confetti-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 60;
+}
+
+/* Analyzing tips */
+
+.tip {
+  font-size: 14px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  min-height: 42px;
+}
+
+.tip strong {
+  color: var(--accent-ink);
 }
 
 /* Responsive */
 
+@media (max-width: 780px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .hero__board-wrap {
+    order: -1; /* board leads on mobile — board-forward */
+  }
+}
+
 @media (max-width: 720px) {
   .app {
-    padding: 16px;
+    padding: 18px 16px;
   }
 
   .btn--lg {
@@ -411,5 +883,55 @@ body {
 
   .drill__info {
     width: 100%;
+    max-width: min(86vw, 440px);
+  }
+
+  .tiles {
+    gap: 8px;
+  }
+}
+
+/* Entrance animations */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.pop {
+  animation: pop 0.4s ease;
+}
+
+/* Reduced motion — kill all non-essential motion */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }
