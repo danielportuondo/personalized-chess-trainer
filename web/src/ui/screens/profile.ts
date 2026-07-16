@@ -135,16 +135,46 @@ export function renderProfile(ctx: AppContext, params?: unknown): void {
                   text: "Analyze more games",
                   onClick: () => ctx.navigate("analyzing"),
                 }),
-            isEmpty
-              ? null
-              : el("button", {
-                  class: "btn btn--ghost",
-                  text: "Switch handle",
-                  onClick: () => ctx.navigate("landing"),
-                }),
+            // Always available — including the empty state — so a handle with no
+            // puzzles isn't a dead-end (re-analyzing the same handle would loop).
+            el("button", {
+              class: "btn btn--ghost",
+              text: "Switch handle",
+              onClick: () => ctx.navigate("landing"),
+            }),
           ),
         ),
       );
     },
-  );
+  ).catch(() => {
+    if (!loadingEl.isConnected) return; // user navigated away while loading
+    mount(
+      ctx.root,
+      el(
+        "div",
+        { class: "app" },
+        el(
+          "div",
+          { class: "screen" },
+          el("h1", { class: "title", text: username }),
+          el(
+            "div",
+            { class: "card" },
+            el("p", { class: "subtitle", text: "Couldn't load your profile" }),
+            el("p", { class: "muted", text: "Something went wrong reading your saved data." }),
+          ),
+          el("button", {
+            class: "btn btn--primary btn--lg",
+            text: "Retry",
+            onClick: () => ctx.navigate("profile"),
+          }),
+          el("button", {
+            class: "btn btn--ghost",
+            text: "Switch handle",
+            onClick: () => ctx.navigate("landing"),
+          }),
+        ),
+      ),
+    );
+  });
 }

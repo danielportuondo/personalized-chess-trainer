@@ -148,7 +148,7 @@ export function renderDrill(ctx: AppContext): void {
             }, 900);
           } else {
             drawBestMove(api, pz.bestMoveUci.slice(0, 2), pz.bestMoveUci.slice(2, 4));
-            const reason = pz.motif ? REASON[pz.motif] : "a stronger move was available";
+            const reason = pz.motif ? REASON[pz.motif] : REASON.other;
             feedbackEl.replaceChildren(
               el("p", { class: "drill__feedback-text drill__feedback-text--miss", text: "✗ Not quite." }),
               el("p", { class: "muted", text: `Best move: ${pz.bestMoveUci}` }),
