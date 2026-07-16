@@ -207,9 +207,16 @@ body {
 
 .progress__fill {
   height: 100%;
-  width: 40%;
+  width: 0%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--accent), var(--xp));
+  transition: width 0.2s ease;
+}
+
+/* Shown before real progress is known (e.g. fetch phase, no onProgress events
+   yet): a partial-width fill that pulses to read as "working". */
+.progress--indeterminate .progress__fill {
+  width: 35%;
   animation: progress-pulse 1.4s ease-in-out infinite;
 }
 
