@@ -89,7 +89,9 @@ export function renderDrill(ctx: AppContext): void {
         );
       }
 
-      function renderPuzzle(i: number): void {
+      // practice: a no-stakes rerun after a scored miss — finalize() skips all
+      // scoring/persistence, so nothing here can double-count the puzzle.
+      function renderPuzzle(i: number, practice = false): void {
         const pz = session[i];
         const color = turnColorOf(pz.fen);
         // The puzzle plays out its (capped) solution line: user move → scripted opponent
@@ -123,6 +125,7 @@ export function renderDrill(ctx: AppContext): void {
           el("span", { text: `${color === "white" ? "White" : "Black"} to move` }),
         );
         const hintTextEl = el("div", { class: "drill__hint" });
+        const practiceNoteEl = el("p", { class: "drill__practice-note", text: practice ? "Practice — not scored" : "" });
         const moveIndicatorEl = el("p", { class: "drill__move-indicator" });
         function updateMoveIndicator(): void {
           moveIndicatorEl.textContent = moves.length > 1 ? `Move ${m + 1} of ${moves.length}` : "";
@@ -194,6 +197,12 @@ export function renderDrill(ctx: AppContext): void {
           text: "Skip",
           onClick: () => {
             if (resolved) return;
+            // A practice run was already scored as a miss — skipping it must not
+            // overwrite outcomes[i] or touch the (already reset) run.
+            if (practice) {
+              advance();
+              return;
+            }
             if (run > 0 && !skipArmed) {
               skipArmed = true;
               skipBtn.classList.add("btn--warn");
@@ -227,6 +236,7 @@ export function renderDrill(ctx: AppContext): void {
         async function finalize(passed: boolean): Promise<void> {
           resolved = true;
           refreshHintBtn();
+          if (practice) return; // no-stakes rerun: the original miss already scored
           attempted++;
           if (passed) correct++;
           run = passed ? run + 1 : 0;
@@ -258,12 +268,17 @@ export function renderDrill(ctx: AppContext): void {
         }
 
         function solved(): void {
-          celebratePop(elementOrigin(boardEl).x, elementOrigin(boardEl).y);
+          // Confetti stays reserved for scored solves — a practice win gets the
+          // green flash + pop text only.
+          if (!practice) celebratePop(elementOrigin(boardEl).x, elementOrigin(boardEl).y);
           feedbackEl.replaceChildren(
-            el("p", { class: "drill__feedback-text drill__feedback-text--correct pop", text: "✓ Correct!" }),
+            el("p", {
+              class: "drill__feedback-text drill__feedback-text--correct pop",
+              text: practice ? "✓ Got it!" : "✓ Correct!",
+            }),
           );
           // The board already sits on the final position — review from there.
-          enterReview(frames.length - 1);
+          enterReview(frames.length - 1, false);
         }
 
         function missed(step: UserMoveStep): void {
@@ -277,12 +292,13 @@ export function renderDrill(ctx: AppContext): void {
           );
           // Reset the board from the wrong move back to the position they missed, so
           // stepping forward reveals the winning continuation. frames[2*m] === step.fenBefore.
-          enterReview(2 * m);
+          enterReview(2 * m, true);
         }
 
         // Shared post-solve/-miss state: the board is locked and the line can be walked
         // ply by ply with ←/→ (and on-screen ‹/›); Enter or the primary button continues.
-        function enterReview(startIdx: number): void {
+        // canRetry (miss only): offers a no-stakes practice rerun of the same puzzle.
+        function enterReview(startIdx: number, canRetry: boolean): void {
           turnFlagEl.style.display = "none"; // per-frame side differs from the puzzle's starting side (.turn-flag sets display, so [hidden] won't take)
           moveIndicatorEl.textContent = ""; // superseded by the review caption
           skipBtn.hidden = true; // meaningless once resolved
@@ -318,9 +334,23 @@ export function renderDrill(ctx: AppContext): void {
             onClick: () => advance(),
           });
 
+          function retry(): void {
+            cleanup();
+            try {
+              renderPuzzle(i, true);
+            } catch (err) {
+              renderLoadError(ctx, err);
+            }
+          }
+
           reviewEl.replaceChildren(
             el("div", { class: "drill__review-nav" }, prevBtn, caption, nextBtn),
-            continueBtn,
+            el(
+              "div",
+              { class: "drill__review-actions" },
+              ...(canRetry ? [el("button", { class: "btn btn--ghost drill__review-retry", text: "↻ Try again", onClick: retry })] : []),
+              continueBtn,
+            ),
           );
 
           keyHandler = (e: KeyboardEvent) => {
@@ -333,6 +363,9 @@ export function renderDrill(ctx: AppContext): void {
             } else if (e.key === "Enter") {
               e.preventDefault();
               advance();
+            } else if ((e.key === "r" || e.key === "R") && canRetry) {
+              e.preventDefault();
+              retry();
             }
           };
           window.addEventListener("keydown", keyHandler);
@@ -397,6 +430,7 @@ export function renderDrill(ctx: AppContext): void {
               el("p", { class: "stat-label", text: `Puzzle ${i + 1} of ${session.length}` }),
               dotsEl,
               turnFlagEl,
+              practiceNoteEl,
               moveIndicatorEl,
               el("div", { class: "drill__hint-row" }, hintBtn),
               hintTextEl,

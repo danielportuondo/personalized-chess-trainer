@@ -711,6 +711,20 @@ body {
   display: none;
 }
 
+/* Practice rerun after a scored miss — gold "assist" accent (same family as hints)
+   signals nothing in this attempt counts. Collapses outside practice mode. */
+.drill__practice-note {
+  margin: -6px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--xp-ink);
+}
+
+.drill__practice-note:empty {
+  display: none;
+}
+
 .drill__feedback {
   min-height: 24px;
   display: flex;
@@ -773,8 +787,17 @@ body {
   color: var(--text-dim);
 }
 
+.drill__review-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.drill__review-retry {
+  flex: 0 0 auto;
+}
+
 .drill__review-next {
-  align-self: stretch;
+  flex: 1 1 auto;
 }
 
 /* Hint — gold "assist/insight" accent, distinct from green-correct / red-miss /
