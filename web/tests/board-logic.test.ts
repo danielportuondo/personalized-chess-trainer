@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { turnColorOf, legalDests, moveToUci, applyUci, planSolutionLine } from "../src/ui/board-logic";
+import { turnColorOf, legalDests, moveToUci, applyUci, planSolutionLine, buildReviewFrames } from "../src/ui/board-logic";
 
 const STARTPOS = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const BLACK_TO_MOVE = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1";
@@ -98,5 +98,49 @@ describe("planSolutionLine", () => {
     const { moves } = planSolutionLine(STARTPOS, "e2e4 e7e5 zzzz");
     expect(moves).toHaveLength(1);
     expect(moves[0].expectedUci).toBe("e2e4");
+  });
+});
+
+describe("buildReviewFrames", () => {
+  const FORK_FEN = "2q1k3/pp3ppp/8/8/2N5/8/PP3PPP/4K3 w - - 0 1";
+
+  it("returns no frames for an empty line", () => {
+    expect(buildReviewFrames([])).toEqual([]);
+  });
+
+  it("a single-move puzzle yields 2 frames: start, then after the move", () => {
+    const mate = "r1bqk1nr/pppp1ppp/2n5/2b1p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 0 1";
+    const { moves } = planSolutionLine(mate, "h5f7");
+    const frames = buildReviewFrames(moves);
+    expect(frames).toHaveLength(2);
+    expect(frames[0]).toEqual({ fen: mate, lastMove: null, label: "Start" });
+    expect(frames[1].fen).toBe(applyUci(mate, "h5f7"));
+    expect(frames[1].lastMove).toEqual(["h5", "f7"]);
+    expect(frames[1].label).toBe("White: h5f7");
+  });
+
+  it("a 2-move line yields 4 frames alternating mover, with correct positions", () => {
+    const { moves } = planSolutionLine(FORK_FEN, "c4d6 e8e7 d6c8");
+    const frames = buildReviewFrames(moves);
+    expect(frames).toHaveLength(4);
+    expect(frames.map((f) => f.label)).toEqual([
+      "Start",
+      "White: c4d6",
+      "Black: e8e7",
+      "White: d6c8",
+    ]);
+    // The opponent reply frame is exactly the position the next user move faces.
+    expect(frames[2].fen).toBe(moves[1].fenBefore);
+    expect(frames[3].fen).toBe(applyUci(moves[1].fenBefore, "d6c8"));
+    expect(frames[3].lastMove).toEqual(["d6", "c8"]);
+  });
+
+  it("a 3-move line yields 6 frames (2L) with the before-ply-m invariant at index 2m", () => {
+    const { moves } = planSolutionLine(STARTPOS, "g1f3 g8f6 f3g1 f6g8 g1f3 g8f6 f3g1");
+    const frames = buildReviewFrames(moves);
+    expect(moves).toHaveLength(3);
+    expect(frames).toHaveLength(6);
+    moves.forEach((step, m) => expect(frames[2 * m].fen).toBe(step.fenBefore));
+    expect(frames[5].lastMove).toEqual(["g1", "f3"]);
   });
 });

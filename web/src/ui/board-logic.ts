@@ -108,3 +108,41 @@ export function planSolutionLine(
 
   return { moves };
 }
+
+// One position in the post-solve review walk: the FEN to show, the move that produced it
+// (for the last-move highlight; null on the starting position), and a short caption.
+export interface ReviewFrame {
+  fen: string;
+  lastMove: [string, string] | null;
+  label: string;
+}
+
+// Flattens a planned line into the ply-by-ply positions the review steps through: the
+// starting position, then after every user move and every scripted opponent reply, in
+// play order. Captions are color-based (neutral) so they read correctly whether the puzzle
+// was solved or missed — on a miss the line is the winning continuation, not "your" moves.
+// For L user moves there are always 2L frames, and the position before user move m sits at
+// frame index 2m.
+export function buildReviewFrames(moves: UserMoveStep[]): ReviewFrame[] {
+  if (moves.length === 0) return [];
+  const label = (color: Color, uci: string) => `${color === "white" ? "White" : "Black"}: ${uci}`;
+  const squares = (uci: string): [string, string] => [uci.slice(0, 2), uci.slice(2, 4)];
+
+  const frames: ReviewFrame[] = [{ fen: moves[0].fenBefore, lastMove: null, label: "Start" }];
+  for (const step of moves) {
+    const mover = turnColorOf(step.fenBefore);
+    frames.push({
+      fen: applyUci(step.fenBefore, step.expectedUci),
+      lastMove: squares(step.expectedUci),
+      label: label(mover, step.expectedUci),
+    });
+    if (step.reply) {
+      frames.push({
+        fen: step.reply.fenAfter,
+        lastMove: squares(step.reply.uci),
+        label: label(mover === "white" ? "black" : "white", step.reply.uci),
+      });
+    }
+  }
+  return frames;
+}

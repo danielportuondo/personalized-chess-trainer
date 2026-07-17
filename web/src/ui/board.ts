@@ -49,13 +49,6 @@ export function mountPuzzleBoard(el: HTMLElement, opts: PuzzleBoardOpts): Api {
   return Chessground(el, config);
 }
 
-// Draws the best-move arrow (used after the user answers, or on reveal) as a single green
-// one-shot shape; setShapes replaces any prior shapes rather than accumulating them.
-export function drawBestMove(api: Api, orig: string, dest: string): void {
-  const shape: DrawShape = { orig: orig as Key, dest: dest as Key, brush: "green" };
-  api.setShapes([shape]);
-}
-
 export interface StaticShape {
   orig: string;
   dest?: string; // omit for a square highlight (circle); include for an arrow
@@ -99,6 +92,17 @@ export function playOpponentReply(api: Api, fenAfter: string, moveUci: string): 
   const orig = moveUci.slice(0, 2) as Key;
   const dest = moveUci.slice(2, 4) as Key;
   api.set({ fen: fenAfter, lastMove: [orig, dest] });
+}
+
+// Renders one post-solve review frame on the (already-locked) board: sets the position and
+// highlights the move that produced it, clearing any annotation shapes (e.g. a miss's
+// best-move arrow). lastMove null on the starting frame leaves no highlight.
+export function showFrame(api: Api, fen: string, lastMove: [string, string] | null): void {
+  api.setShapes([]);
+  api.set({
+    fen,
+    lastMove: lastMove ? [lastMove[0] as Key, lastMove[1] as Key] : undefined,
+  });
 }
 
 // Re-enables input for the side to move at `fen`, restricting drags to its legal moves.

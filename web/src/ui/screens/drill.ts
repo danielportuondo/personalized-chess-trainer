@@ -1,7 +1,7 @@
 import type { AppContext } from "../app";
 import { el, mount } from "../dom";
-import { mountPuzzleBoard, drawBestMove, lockBoard, playOpponentReply, armForMove } from "../board";
-import { turnColorOf, moveToUci, planSolutionLine } from "../board-logic";
+import { mountPuzzleBoard, lockBoard, playOpponentReply, armForMove, showFrame } from "../board";
+import { turnColorOf, moveToUci, planSolutionLine, buildReviewFrames } from "../board-logic";
 import type { UserMoveStep } from "../board-logic";
 import { celebratePop, elementOrigin } from "../celebrate";
 import { getAllPuzzles, getReviewByKey, recordResult, recordProgress } from "../../db";
@@ -106,11 +106,22 @@ export function renderDrill(ctx: AppContext): void {
         let busy = false; // a move is being processed / the opponent is replying
         let hintUsed = false;
         let api: Api;
+        // Post-solve review: the flattened ply-by-ply positions, plus the live keydown
+        // handler (present only while reviewing; torn down on advance/quit).
+        const frames = buildReviewFrames(moves);
+        let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
         const boardEl = el("div", { class: "board" });
         const scoreEl = el("p", { class: "muted notation", text: `✓ ${correct} / ${attempted}` });
         const streakEl = el("span", { class: "badge badge--flame", text: `🔥 ${run}` });
         const feedbackEl = el("div", { class: "drill__feedback" });
+        const reviewEl = el("div", { class: "drill__review" });
+        const turnFlagEl = el(
+          "div",
+          { class: "turn-flag" },
+          el("span", { class: `turn-flag__dot turn-flag__dot--${color}` }),
+          el("span", { text: `${color === "white" ? "White" : "Black"} to move` }),
+        );
         const hintTextEl = el("div", { class: "drill__hint" });
         const moveIndicatorEl = el("p", { class: "drill__move-indicator" });
         function updateMoveIndicator(): void {
@@ -143,7 +154,16 @@ export function renderDrill(ctx: AppContext): void {
         refreshHintBtn();
         let dotsEl = renderDots(i);
 
+        // Removes the review keydown handler so a stale one never lingers past this puzzle.
+        function cleanup(): void {
+          if (keyHandler) {
+            window.removeEventListener("keydown", keyHandler);
+            keyHandler = null;
+          }
+        }
+
         function advance(): void {
+          cleanup();
           idx = i + 1;
           if (idx >= session.length) {
             const result: SummaryParams = {
@@ -185,7 +205,14 @@ export function renderDrill(ctx: AppContext): void {
             advance();
           },
         });
-        const quitBtn = el("button", { class: "btn btn--ghost", text: "Quit", onClick: () => ctx.navigate("profile") });
+        const quitBtn = el("button", {
+          class: "btn btn--ghost",
+          text: "Quit",
+          onClick: () => {
+            cleanup();
+            ctx.navigate("profile");
+          },
+        });
 
         // Re-triggers a one-shot flash by clearing both flash classes and forcing a reflow
         // before re-adding — so a mid-line correct move flashes green every time.
@@ -235,14 +262,11 @@ export function renderDrill(ctx: AppContext): void {
           feedbackEl.replaceChildren(
             el("p", { class: "drill__feedback-text drill__feedback-text--correct pop", text: "✓ Correct!" }),
           );
-          setTimeout(() => {
-            if (!boardEl.isConnected) return; // navigated away during the auto-advance delay
-            advance();
-          }, 900);
+          // The board already sits on the final position — review from there.
+          enterReview(frames.length - 1);
         }
 
         function missed(step: UserMoveStep): void {
-          drawBestMove(api, step.expectedUci.slice(0, 2), step.expectedUci.slice(2, 4));
           // The motif reason describes the puzzle's opening idea, so it only holds for a
           // first-move miss; deeper in the line, name it as the continuation.
           const reasonText = m === 0 ? (pz.motif ? REASON[pz.motif] : REASON.other) : "That wasn't the winning continuation.";
@@ -250,8 +274,70 @@ export function renderDrill(ctx: AppContext): void {
             el("p", { class: "drill__feedback-text drill__feedback-text--miss", text: "✗ Not quite." }),
             el("p", { class: "muted" }, el("span", { text: "Best move: " }), el("span", { class: "notation", text: step.expectedUci })),
             el("p", { class: "muted", text: reasonText }),
-            el("button", { class: "btn btn--primary", text: "Next", onClick: () => advance() }),
           );
+          // Reset the board from the wrong move back to the position they missed, so
+          // stepping forward reveals the winning continuation. frames[2*m] === step.fenBefore.
+          enterReview(2 * m);
+        }
+
+        // Shared post-solve/-miss state: the board is locked and the line can be walked
+        // ply by ply with ←/→ (and on-screen ‹/›); Enter or the primary button continues.
+        function enterReview(startIdx: number): void {
+          turnFlagEl.style.display = "none"; // per-frame side differs from the puzzle's starting side (.turn-flag sets display, so [hidden] won't take)
+          moveIndicatorEl.textContent = ""; // superseded by the review caption
+          skipBtn.hidden = true; // meaningless once resolved
+
+          let frameIdx = startIdx;
+          const caption = el("p", { class: "drill__review-caption notation" });
+          const prevBtn = el("button", {
+            class: "btn btn--ghost drill__review-step",
+            text: "‹",
+            attrs: { "aria-label": "Previous move" },
+            onClick: () => stepTo(frameIdx - 1),
+          });
+          const nextBtn = el("button", {
+            class: "btn btn--ghost drill__review-step",
+            text: "›",
+            attrs: { "aria-label": "Next move" },
+            onClick: () => stepTo(frameIdx + 1),
+          });
+
+          function stepTo(next: number): void {
+            if (next < 0 || next >= frames.length) return; // clamp at both ends
+            frameIdx = next;
+            const f = frames[frameIdx];
+            showFrame(api, f.fen, f.lastMove);
+            caption.textContent = `${frameIdx + 1} / ${frames.length} · ${f.label}`;
+            prevBtn.disabled = frameIdx === 0;
+            nextBtn.disabled = frameIdx === frames.length - 1;
+          }
+
+          const continueBtn = el("button", {
+            class: "btn btn--primary drill__review-next",
+            text: i === session.length - 1 ? "See results" : "Next puzzle",
+            onClick: () => advance(),
+          });
+
+          reviewEl.replaceChildren(
+            el("div", { class: "drill__review-nav" }, prevBtn, caption, nextBtn),
+            continueBtn,
+          );
+
+          keyHandler = (e: KeyboardEvent) => {
+            if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              stepTo(frameIdx - 1);
+            } else if (e.key === "ArrowRight") {
+              e.preventDefault();
+              stepTo(frameIdx + 1);
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              advance();
+            }
+          };
+          window.addEventListener("keydown", keyHandler);
+
+          stepTo(startIdx);
         }
 
         async function onMove(orig: string, dest: string): Promise<void> {
@@ -310,17 +396,13 @@ export function renderDrill(ctx: AppContext): void {
               { class: "drill__info card" },
               el("p", { class: "stat-label", text: `Puzzle ${i + 1} of ${session.length}` }),
               dotsEl,
-              el(
-                "div",
-                { class: "turn-flag" },
-                el("span", { class: `turn-flag__dot turn-flag__dot--${color}` }),
-                el("span", { text: `${color === "white" ? "White" : "Black"} to move` }),
-              ),
+              turnFlagEl,
               moveIndicatorEl,
               el("div", { class: "drill__hint-row" }, hintBtn),
               hintTextEl,
               el("div", { class: "stat-row" }, scoreEl, streakEl),
               feedbackEl,
+              reviewEl,
               el("div", { class: "stat-row" }, skipBtn, quitBtn),
             ),
           ),
