@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createEngine } from "../src/engine";
+import { createEngine, parseInfoLine } from "../src/engine";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -39,6 +39,16 @@ function fakeFactory(handler: Handler): { createWorker: () => Worker; last: () =
 
 const nextTick = () => new Promise((r) => setTimeout(r, 0));
 
+describe("parseInfoLine", () => {
+  it("captures the multipv index, defaulting to 1 when absent", () => {
+    expect(parseInfoLine("info depth 12 multipv 2 score cp -15 nodes 800 pv d2d4 d7d5")).toMatchObject({
+      multipv: 2,
+      cp: -15,
+    });
+    expect(parseInfoLine("info depth 12 score cp 34 nodes 1000 pv e2e4")).toMatchObject({ multipv: 1 });
+  });
+});
+
 describe("createEngine (injected FakeWorker)", () => {
   it("happy path: handshake, analyse, newGame", async () => {
     const { createWorker } = fakeFactory((cmd, emit) => {
@@ -72,6 +82,45 @@ describe("createEngine (injected FakeWorker)", () => {
     });
     await expect(createEngine({ createWorker })).rejects.toThrow(/wasm load failed/);
     expect(last().terminated).toBe(true);
+  });
+
+  it("analyseTop2 returns the two best lines and restores MultiPV 1", async () => {
+    const { createWorker, last } = fakeFactory((cmd, emit) => {
+      if (cmd === "uci") emit("uciok");
+      else if (cmd.startsWith("go")) {
+        emit("info depth 11 multipv 1 score cp 120 nodes 900 pv e2e4 e7e5");
+        emit("info depth 11 multipv 2 score cp 80 nodes 900 pv d2d4 d7d5");
+        emit("info depth 12 multipv 1 score cp 130 nodes 1000 pv e2e4 e7e5 g1f3");
+        emit("info depth 12 multipv 2 score cp 60 nodes 1000 pv d2d4 d7d5 c2c4");
+        emit("bestmove e2e4 ponder e7e5");
+      }
+    });
+
+    const engine = await createEngine({ createWorker });
+    const top2 = await engine.analyseTop2(START_FEN);
+
+    expect(top2.best).toEqual({ cp: 130, mate: null, pv: ["e2e4", "e7e5", "g1f3"] });
+    expect(top2.second).toEqual({ cp: 60, mate: null, pv: ["d2d4", "d7d5", "c2c4"] });
+
+    const sent = last().sent;
+    expect(sent.indexOf("setoption name MultiPV value 2")).toBeGreaterThan(-1);
+    expect(sent.indexOf("setoption name MultiPV value 2")).toBeLessThan(sent.indexOf("go depth 12"));
+    expect(sent.indexOf("setoption name MultiPV value 1")).toBeGreaterThan(sent.indexOf("go depth 12"));
+  });
+
+  it("analyseTop2 leaves second undefined when only one line is reported", async () => {
+    const { createWorker } = fakeFactory((cmd, emit) => {
+      if (cmd === "uci") emit("uciok");
+      else if (cmd.startsWith("go")) {
+        emit("info depth 12 multipv 1 score mate 1 pv h5f7");
+        emit("bestmove h5f7");
+      }
+    });
+
+    const engine = await createEngine({ createWorker });
+    const top2 = await engine.analyseTop2(START_FEN);
+    expect(top2.best).toEqual({ cp: null, mate: 1, pv: ["h5f7"] });
+    expect(top2.second).toBeUndefined();
   });
 
   it("quit() rejects an in-flight analyse (no hang)", async () => {

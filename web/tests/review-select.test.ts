@@ -71,6 +71,20 @@ describe("selectDuePuzzles", () => {
     expect(result.length).toBe(15);
     expect(new Set(result.map((p) => p.dedupeKey)).size).toBe(15);
   });
+
+  it("applies the injected drillable predicate before selection", () => {
+    const puzzles = Array.from({ length: 6 }, (_, i) =>
+      pz({ dedupeKey: `p${i}`, cpl: i < 3 ? 999 : 100 })
+    );
+    const drillable = (p: Puzzle) => p.cpl === 999;
+    const result = selectDuePuzzles(puzzles, {}, emptySummary, today, 15, drillable);
+    expect(result.map((p) => p.dedupeKey).sort()).toEqual(["p0", "p1", "p2"]);
+  });
+
+  it("defaults to no filtering when the predicate is omitted", () => {
+    const puzzles = Array.from({ length: 4 }, (_, i) => pz({ dedupeKey: `p${i}` }));
+    expect(selectDuePuzzles(puzzles, {}, emptySummary, today).length).toBe(4);
+  });
 });
 
 describe("dueCandidates", () => {

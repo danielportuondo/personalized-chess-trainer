@@ -89,15 +89,19 @@ export function dueCandidates(
 
 // Port of train.py:89-111. `summary` is supplied by the caller (typically
 // weaknessSummary(puzzles)) rather than recomputed here, so this module has
-// no dependency on profile.ts.
+// no dependency on profile.ts. `drillable` is a deliberate divergence from the
+// Python reference: an injected curation predicate (see curate.ts) applied
+// before selection, kept injectable so this module stays a parity-clean port.
 export function selectDuePuzzles(
   puzzles: Puzzle[],
   reviewByKey: Record<string, ReviewState>,
   summary: WeaknessSummary,
   today: string,
-  size = 15
+  size = 15,
+  drillable?: (puzzle: Puzzle) => boolean
 ): Puzzle[] {
-  const candidates = dueCandidates(puzzles, reviewByKey, today);
+  let candidates = dueCandidates(puzzles, reviewByKey, today);
+  if (drillable) candidates = candidates.filter(drillable);
 
   const ordered = [...candidates].sort((a, b) => {
     const ra = reviewByKey[a.dedupeKey];

@@ -4,6 +4,7 @@ import { parseFen } from "chessops/fen";
 import { parseUci } from "chessops/util";
 import type { Move } from "chessops/types";
 import { DEMO_PUZZLES, DEMO_META } from "../src/demo/demoFixture";
+import { isDrillable } from "../src/curate";
 
 function position(fen: string): Chess {
   return Chess.fromSetup(parseFen(fen).unwrap()).unwrap();
@@ -40,6 +41,10 @@ describe("demo fixture", () => {
         expect(move, "solution UCI parses").toBeTruthy();
         expect(board.isLegal(move as Move)).toBe(true);
         expect(firstMove(p.solutionLineUci)).toBe(p.bestMoveUci);
+      });
+
+      it("passes the drill curation gate (visible mate or material payoff)", () => {
+        expect(isDrillable(p)).toBe(true);
       });
 
       it("playedMoveUci is legal and is not the solution", () => {

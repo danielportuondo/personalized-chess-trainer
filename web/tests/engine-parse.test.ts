@@ -11,6 +11,7 @@ describe("parseInfoLine", () => {
       cp: 34,
       mate: null,
       pv: ["e2e4", "e7e5", "g1f3", "b8c6"],
+      multipv: 1,
     });
   });
 
@@ -20,6 +21,7 @@ describe("parseInfoLine", () => {
       cp: null,
       mate: 3,
       pv: ["d1h5", "g8f6", "h5f7"],
+      multipv: 1,
     });
   });
 
@@ -29,6 +31,7 @@ describe("parseInfoLine", () => {
       cp: 34,
       mate: null,
       pv: ["e2e4"],
+      multipv: 1,
     });
   });
 
@@ -38,6 +41,7 @@ describe("parseInfoLine", () => {
       cp: 12,
       mate: null,
       pv: [],
+      multipv: 1,
     });
   });
 

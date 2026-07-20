@@ -31,6 +31,10 @@ export interface Puzzle {
   evalBeforeCp: number;
   phase?: Phase;
   motif?: Motif;
+  // MultiPV=2 verdict from analysis time: true = a second move nearly as good
+  // exists, so the puzzle has no unique solution. undefined = analyzed before
+  // the gate existed (treated as drillable).
+  ambiguous?: boolean;
   sourceGameUrl: string;
   sourcePly: number;
   dedupeKey: string;

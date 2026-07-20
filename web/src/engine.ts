@@ -10,8 +10,16 @@
 // It also leaves room to swap in the threaded build later without touching callers.
 import type { AnalyseFn, AnalysisInfo } from "./analysis";
 
+// Best and second-best lines from a single MultiPV=2 search. `second` is
+// undefined when the engine reports only one line (e.g. a single legal move).
+export interface Top2 {
+  best: AnalysisInfo;
+  second?: AnalysisInfo;
+}
+
 export interface Engine {
   analyse: AnalyseFn;
+  analyseTop2(fen: string): Promise<Top2>;
   newGame(): Promise<void>;
   quit(): void;
 }
@@ -30,10 +38,12 @@ export interface ParsedInfo {
   cp: number | null;
   mate: number | null;
   pv: string[];
+  multipv: number; // 1 when the engine omits the token (single-PV mode)
 }
 
 const SCORE_RE = /\bscore\s+(cp|mate)\s+(-?\d+)/;
 const PV_RE = /\spv\s+(.+)$/;
+const MULTIPV_RE = /\bmultipv\s+(\d+)/;
 
 // Pure: no score -> null (info string / currmove-only / bestmove lines all lack `score`).
 export function parseInfoLine(line: string): ParsedInfo | null {
@@ -43,10 +53,12 @@ export function parseInfoLine(line: string): ParsedInfo | null {
   const value = parseInt(scoreMatch[2], 10);
   const pvMatch = line.match(PV_RE);
   const pv = pvMatch ? pvMatch[1].trim().split(/\s+/) : [];
+  const multipvMatch = line.match(MULTIPV_RE);
   return {
     cp: kind === "cp" ? value : null,
     mate: kind === "mate" ? value : null,
     pv,
+    multipv: multipvMatch ? parseInt(multipvMatch[1], 10) : 1,
   };
 }
 
@@ -154,6 +166,37 @@ export async function createEngine(opts?: EngineOptions): Promise<Engine> {
     return { cp: info.cp, mate: info.mate, pv: info.pv };
   }
 
+  // One MultiPV=2 search inside a single queued job; the option is restored to
+  // 1 before resolving so interleaved analyse() calls are unaffected. setoption
+  // has no UCI acknowledgement, so no extra waits are needed around it.
+  async function analyseTop2Once(fen: string): Promise<Top2> {
+    const lastByIndex = new Map<number, ParsedInfo>();
+    const donePromise = awaitReply<void>((line, resolve, reject) => {
+      if (line.startsWith("bestmove")) {
+        const best = lastByIndex.get(1);
+        if (!best || (best.cp === null && best.mate === null)) {
+          reject(new Error(`stockfish: no scored "info" line before bestmove (fen: ${fen})`));
+          return;
+        }
+        resolve();
+        return;
+      }
+      const parsed = parseInfoLine(line);
+      if (parsed) lastByIndex.set(parsed.multipv, parsed);
+    });
+    send("setoption name MultiPV value 2");
+    send(`position fen ${fen}`);
+    send(`go depth ${depth}`);
+    try {
+      await donePromise;
+    } finally {
+      send("setoption name MultiPV value 1");
+    }
+    const toInfo = (p: ParsedInfo): AnalysisInfo => ({ cp: p.cp, mate: p.mate, pv: p.pv });
+    const second = lastByIndex.get(2);
+    return { best: toInfo(lastByIndex.get(1)!), second: second ? toInfo(second) : undefined };
+  }
+
   function newGameOnce(): Promise<void> {
     const readyok = awaitReply<void>((line, resolve) => {
       if (line === "readyok") resolve();
@@ -171,6 +214,7 @@ export async function createEngine(opts?: EngineOptions): Promise<Engine> {
 
   return {
     analyse: (fen: string) => enqueue(() => analyseOnce(fen)),
+    analyseTop2: (fen: string) => enqueue(() => analyseTop2Once(fen)),
     newGame: () => enqueue(newGameOnce),
     quit,
   };

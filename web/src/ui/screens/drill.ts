@@ -7,6 +7,7 @@ import { celebratePop, elementOrigin } from "../celebrate";
 import { getAllPuzzles, getReviewByKey, recordResult, recordProgress } from "../../db";
 import { weaknessSummary, REASON, HINT } from "../../profile";
 import { dueCandidates, selectDuePuzzles } from "../../review";
+import { curatePuzzle, difficultyScore, isDrillable } from "../../curate";
 import { todayIso } from "../../dates";
 import type { Api } from "chessground/api";
 import type { SummaryParams } from "./summary";
@@ -55,8 +56,12 @@ export function renderDrill(ctx: AppContext): void {
 
       const today = todayIso();
       const summary = weaknessSummary(puzzles);
-      const dueCount = dueCandidates(puzzles, reviewByKey, today).length;
-      const session = selectDuePuzzles(puzzles, reviewByKey, summary, today, 15);
+      const dueCount = dueCandidates(puzzles, reviewByKey, today).filter(isDrillable).length;
+      const session = selectDuePuzzles(puzzles, reviewByKey, summary, today, 15, isDrillable);
+      // Warm-up ordering: short forcing lines first, deep quiet ones last.
+      session.sort(
+        (a, b) => difficultyScore(curatePuzzle(a)!, a) - difficultyScore(curatePuzzle(b)!, b),
+      );
       const morePending = dueCount > session.length;
 
       if (session.length === 0) {
@@ -94,10 +99,16 @@ export function renderDrill(ctx: AppContext): void {
       function renderPuzzle(i: number, practice = false): void {
         const pz = session[i];
         const color = turnColorOf(pz.fen);
-        // The puzzle plays out its (capped) solution line: user move → scripted opponent
-        // reply → next user move. moves[m].fenBefore is the position facing the user at
-        // each step; the opponent's reply lands exactly on moves[m+1].fenBefore.
-        const plan = planSolutionLine(pz.fen, pz.solutionLineUci);
+        // The puzzle plays out its curated solution line — trimmed to end the moment
+        // the payoff (mate or banked material) is on the board: user move → scripted
+        // opponent reply → next user move. moves[m].fenBefore is the position facing
+        // the user at each step; the opponent's reply lands on moves[m+1].fenBefore.
+        // Sessions are pre-filtered by isDrillable, so the un-curated fallback only
+        // guards hand-authored data.
+        const curated = curatePuzzle(pz);
+        const plan = curated
+          ? planSolutionLine(pz.fen, curated.lineUci, curated.userMoves)
+          : planSolutionLine(pz.fen, pz.solutionLineUci);
         // Fallback keeps a puzzle scorable if the stored line's first token is unparseable
         // (near-impossible post-pipeline): degrade to a single-move puzzle.
         const moves: UserMoveStep[] = plan.moves.length

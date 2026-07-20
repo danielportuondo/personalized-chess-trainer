@@ -4,7 +4,7 @@ import { analyzeAndPersist } from "../src/pipeline";
 import { openTrainerDb, DB_NAME, getAnalyzedGameUrls, getAllPuzzles } from "../src/db";
 import { BASE_URL } from "../src/chesscom";
 import type { AnalysisInfo, AnalyseFn } from "../src/analysis";
-import type { createEngine, Engine } from "../src/engine";
+import type { createEngine, Engine, Top2 } from "../src/engine";
 
 afterEach(async () => {
   await indexedDB.deleteDatabase(DB_NAME);
@@ -59,20 +59,27 @@ function fakeFetch(gamesRef: { games: ReturnType<typeof rawGame>[] }): typeof fe
 // AnalysisInfo queue whose index survives across engine instances/runs --
 // analyzeAndPersist creates one engine per call, so the shared `idx` lets us
 // assert precisely how many (and which) analyse() calls happened per run.
-function makeEngineFn(infos: AnalysisInfo[]) {
+function makeEngineFn(infos: AnalysisInfo[], top2s: Top2[] = []) {
   let idx = 0;
+  let top2Idx = 0;
   const fensSeen: string[] = [];
+  const top2FensSeen: string[] = [];
   const createEngineFn = vi.fn(async () => {
     const analyse: AnalyseFn = vi.fn(async (fen: string) => {
       fensSeen.push(fen);
       return infos[idx++];
     });
+    const analyseTop2 = vi.fn(async (fen: string) => {
+      top2FensSeen.push(fen);
+      // Default = clearly unique, so tests that don't care about ambiguity pass unchanged.
+      return top2s[top2Idx++] ?? { best: { cp: 0, mate: null, pv: [] }, second: undefined };
+    });
     const newGame = vi.fn(async () => {});
     const quit = vi.fn();
-    const engine: Engine = { analyse, newGame, quit };
+    const engine: Engine = { analyse, analyseTop2, newGame, quit };
     return engine;
   }) as unknown as typeof createEngine;
-  return { createEngineFn, fensSeen };
+  return { createEngineFn, fensSeen, top2FensSeen };
 }
 
 describe("analyzeAndPersist", () => {
@@ -157,6 +164,65 @@ describe("analyzeAndPersist", () => {
 
     const puzzlesAfterRun3 = await getAllPuzzles(db, "dportuondo");
     expect(new Set(puzzlesAfterRun3.map((p) => p.dedupeKey))).toEqual(dedupeKeysAfterRun2);
+
+    db.close();
+  });
+
+  it("flags new puzzles ambiguous via MultiPV and never re-checks persisted ones", async () => {
+    const db = await openTrainerDb();
+
+    const gamesRef = {
+      games: [
+        rawGame({ url: "game-1", pgn: GAME1_PGN, end_time: 300, white: { username: "opp1", result: "win" } }),
+        rawGame({ url: "game-2", pgn: GAME2_PGN, end_time: 200, white: { username: "opp2", result: "win" } }),
+      ],
+    };
+    const fetchImpl = fakeFetch(gamesRef);
+
+    const infos: AnalysisInfo[] = [
+      { cp: 10, mate: null, pv: ["e7e5"] },
+      { cp: 800, mate: null, pv: [] },
+      { cp: 20, mate: null, pv: ["d7d5"] },
+      { cp: 900, mate: null, pv: [] },
+      { cp: 30, mate: null, pv: ["c7c5"] },
+      { cp: 1000, mate: null, pv: [] },
+    ];
+    // Extraction orders by cpl DESC, so run 1 checks game-2's puzzle (cpl 920)
+    // before game-1's (cpl 810); run 2 checks only game-3's.
+    const top2s: Top2[] = [
+      // game-2: second move within 100cp of best -> ambiguous
+      { best: { cp: 850, mate: null, pv: ["d7d5"] }, second: { cp: 800, mate: null, pv: ["g8f6"] } },
+      // game-1: best is mate (bounded ~9998) vs cp 300 -> clearly unique
+      { best: { cp: null, mate: 2, pv: ["e7e5"] }, second: { cp: 300, mate: null, pv: ["b8c6"] } },
+      // game-3: engine reports a single line -> unique
+      { best: { cp: 700, mate: null, pv: ["c7c5"] }, second: undefined },
+    ];
+    const { createEngineFn, top2FensSeen } = makeEngineFn(infos, top2s);
+
+    await analyzeAndPersist("dportuondo", db, { fetchImpl, createEngineFn });
+
+    const afterRun1 = await getAllPuzzles(db, "dportuondo");
+    const byGame = (url: string) => afterRun1.find((p) => p.sourceGameUrl === url)!;
+    expect(top2FensSeen).toHaveLength(2);
+    expect(byGame("game-2").ambiguous).toBe(true);
+    expect(byGame("game-1").ambiguous).toBe(false);
+
+    gamesRef.games.push(
+      rawGame({ url: "game-3", pgn: GAME3_PGN, end_time: 100, white: { username: "opp3", result: "win" } })
+    );
+    await analyzeAndPersist("dportuondo", db, { fetchImpl, createEngineFn });
+
+    const afterRun2 = await getAllPuzzles(db, "dportuondo");
+    const byGame2 = (url: string) => afterRun2.find((p) => p.sourceGameUrl === url)!;
+    // Only the new puzzle was uniqueness-checked; persisted verdicts survive first-wins.
+    expect(top2FensSeen).toHaveLength(3);
+    expect(byGame2("game-3").ambiguous).toBe(false);
+    expect(byGame2("game-2").ambiguous).toBe(true);
+    expect(byGame2("game-1").ambiguous).toBe(false);
+
+    // Idempotent run: no pending games -> no engine -> no further checks.
+    await analyzeAndPersist("dportuondo", db, { fetchImpl, createEngineFn });
+    expect(top2FensSeen).toHaveLength(3);
 
     db.close();
   });

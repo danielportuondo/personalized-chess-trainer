@@ -64,9 +64,14 @@ function fakeEngineFactory(infos: AnalysisInfo[]): {
 } {
   let idx = 0;
   const analyse: AnalyseFn = vi.fn(async (_fen: string) => infos[idx++]);
+  // runPipeline never uniqueness-checks (that's analyzeAndPersist's job).
+  const analyseTop2 = vi.fn(async (_fen: string) => ({
+    best: { cp: 0, mate: null, pv: [] },
+    second: undefined,
+  }));
   const newGame = vi.fn(async () => {});
   const quit = vi.fn();
-  const engine: Engine = { analyse, newGame, quit };
+  const engine: Engine = { analyse, analyseTop2, newGame, quit };
   const createEngineFn = vi.fn(async () => engine) as unknown as typeof createEngine;
   return { createEngineFn, engine };
 }
@@ -116,9 +121,13 @@ describe("runPipeline", () => {
     const analyse: AnalyseFn = vi.fn(async (_fen: string) => {
       throw new Error("engine exploded");
     });
+    const analyseTop2 = vi.fn(async (_fen: string) => ({
+      best: { cp: 0, mate: null, pv: [] },
+      second: undefined,
+    }));
     const newGame = vi.fn(async () => {});
     const quit = vi.fn();
-    const engine: Engine = { analyse, newGame, quit };
+    const engine: Engine = { analyse, analyseTop2, newGame, quit };
     const createEngineFn = vi.fn(async () => engine) as unknown as typeof createEngine;
 
     await expect(

@@ -3,6 +3,7 @@ import { el, mount } from "../dom";
 import { getMeta, getAllPuzzles, getReviewByKey } from "../../db";
 import { weaknessSummary } from "../../profile";
 import { dueCandidates } from "../../review";
+import { isDrillable } from "../../curate";
 import { todayIso } from "../../dates";
 import { countUp } from "../animate";
 import type { GroupRow } from "../../types";
@@ -71,7 +72,9 @@ export function renderProfile(ctx: AppContext, params?: unknown): void {
 
       const today = todayIso();
       const summary = weaknessSummary(puzzles);
-      const dueCount = dueCandidates(puzzles, reviewByKey, today).length;
+      // Same gate as the drill session builder, so the badge promises only
+      // puzzles a session can actually serve.
+      const dueCount = dueCandidates(puzzles, reviewByKey, today).filter(isDrillable).length;
       const hasFlash = Boolean(newGames || newPuzzles);
       const isEmpty = puzzles.length === 0;
       const topMotif = summary.byMotif.length
