@@ -17,6 +17,7 @@ import { Chess } from "chessops/chess";
 import { parseFen, makeFen } from "chessops/fen";
 import { chessgroundDests } from "chessops/compat";
 import { parseSquare, parseUci } from "chessops/util";
+import { makeSan } from "chessops/san";
 import type { Color, SquareName } from "chessops/types";
 
 function position(fen: string): Chess {
@@ -109,6 +110,20 @@ export function planSolutionLine(
   return { moves };
 }
 
+// Renders a UCI token as SAN for display ("h5f7" -> "Qxf7#"). Falls back to the
+// raw token on an unparseable/illegal move so hand-authored data degrades to the
+// old UCI display instead of throwing mid-render.
+export function uciToSan(fen: string, uci: string): string {
+  try {
+    const pos = position(fen);
+    const move = parseUci(uci);
+    if (!move || !pos.isLegal(move)) return uci;
+    return makeSan(pos, move);
+  } catch {
+    return uci;
+  }
+}
+
 // One position in the post-solve review walk: the FEN to show, the move that produced it
 // (for the last-move highlight; null on the starting position), and a short caption.
 export interface ReviewFrame {
@@ -125,22 +140,23 @@ export interface ReviewFrame {
 // frame index 2m.
 export function buildReviewFrames(moves: UserMoveStep[]): ReviewFrame[] {
   if (moves.length === 0) return [];
-  const label = (color: Color, uci: string) => `${color === "white" ? "White" : "Black"}: ${uci}`;
+  const label = (color: Color, san: string) => `${color === "white" ? "White" : "Black"}: ${san}`;
   const squares = (uci: string): [string, string] => [uci.slice(0, 2), uci.slice(2, 4)];
 
   const frames: ReviewFrame[] = [{ fen: moves[0].fenBefore, lastMove: null, label: "Start" }];
   for (const step of moves) {
     const mover = turnColorOf(step.fenBefore);
+    const fenAfterUser = applyUci(step.fenBefore, step.expectedUci);
     frames.push({
-      fen: applyUci(step.fenBefore, step.expectedUci),
+      fen: fenAfterUser,
       lastMove: squares(step.expectedUci),
-      label: label(mover, step.expectedUci),
+      label: label(mover, uciToSan(step.fenBefore, step.expectedUci)),
     });
     if (step.reply) {
       frames.push({
         fen: step.reply.fenAfter,
         lastMove: squares(step.reply.uci),
-        label: label(mover === "white" ? "black" : "white", step.reply.uci),
+        label: label(mover === "white" ? "black" : "white", uciToSan(fenAfterUser, step.reply.uci)),
       });
     }
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { turnColorOf, legalDests, moveToUci, applyUci, planSolutionLine, buildReviewFrames } from "../src/ui/board-logic";
+import { turnColorOf, legalDests, moveToUci, applyUci, planSolutionLine, buildReviewFrames, uciToSan } from "../src/ui/board-logic";
 
 const STARTPOS = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const BLACK_TO_MOVE = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1";
@@ -116,7 +116,7 @@ describe("buildReviewFrames", () => {
     expect(frames[0]).toEqual({ fen: mate, lastMove: null, label: "Start" });
     expect(frames[1].fen).toBe(applyUci(mate, "h5f7"));
     expect(frames[1].lastMove).toEqual(["h5", "f7"]);
-    expect(frames[1].label).toBe("White: h5f7");
+    expect(frames[1].label).toBe("White: Qxf7#");
   });
 
   it("a 2-move line yields 4 frames alternating mover, with correct positions", () => {
@@ -125,9 +125,9 @@ describe("buildReviewFrames", () => {
     expect(frames).toHaveLength(4);
     expect(frames.map((f) => f.label)).toEqual([
       "Start",
-      "White: c4d6",
-      "Black: e8e7",
-      "White: d6c8",
+      "White: Nd6+",
+      "Black: Ke7",
+      "White: Nxc8+",
     ]);
     // The opponent reply frame is exactly the position the next user move faces.
     expect(frames[2].fen).toBe(moves[1].fenBefore);
@@ -142,5 +142,28 @@ describe("buildReviewFrames", () => {
     expect(frames).toHaveLength(6);
     moves.forEach((step, m) => expect(frames[2 * m].fen).toBe(step.fenBefore));
     expect(frames[5].lastMove).toEqual(["g1", "f3"]);
+  });
+});
+
+describe("uciToSan", () => {
+  it("renders a capture-mate with SAN suffixes", () => {
+    const mate = "r1bqk1nr/pppp1ppp/2n5/2b1p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 0 1";
+    expect(uciToSan(mate, "h5f7")).toBe("Qxf7#");
+  });
+
+  it("renders castling as O-O", () => {
+    expect(uciToSan("4k3/8/8/8/8/8/8/4K2R w K - 0 1", "e1g1")).toBe("O-O");
+  });
+
+  it("renders promotion with the = suffix", () => {
+    expect(uciToSan("8/P6k/8/8/8/8/8/4K3 w - - 0 1", "a7a8q")).toBe("a8=Q");
+  });
+
+  it("falls back to the raw token when unparseable", () => {
+    expect(uciToSan(STARTPOS, "zzzz")).toBe("zzzz");
+  });
+
+  it("falls back to the raw token when illegal", () => {
+    expect(uciToSan(STARTPOS, "a1a8")).toBe("a1a8");
   });
 });

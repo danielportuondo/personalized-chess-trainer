@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { weaknessSummary } from "../src/profile";
+import { topNamedMotif, weaknessSummary } from "../src/profile";
 import type { Puzzle } from "../src/types";
 
 const pz = (o: Partial<Puzzle>): Puzzle => ({
@@ -114,5 +114,44 @@ describe("weaknessSummary", () => {
     ];
     const s = weaknessSummary(puzzles);
     expect(s.avgCpl).toBe(12.2);
+  });
+
+  it("caps mate-sentinel cpl at 1000 in averages (top-level and per-group), counts unchanged", () => {
+    // A missed mate carries cpl ≈ 9900 (mate sentinel minus a small eval);
+    // uncapped it would dominate every average it touches.
+    const puzzles: Puzzle[] = [
+      pz({ dedupeKey: "1", phase: "opening", motif: "missed forced mate", cpl: 9900, sourcePly: 1 }),
+      pz({ dedupeKey: "2", phase: "opening", motif: "hanging piece", cpl: 100, sourcePly: 1 }),
+    ];
+    const s = weaknessSummary(puzzles);
+    expect(s.avgCpl).toBe(550); // (1000 + 100) / 2, not (9900 + 100) / 2
+    expect(s.byPhase).toEqual([{ key: "opening", n: 2, pct: 100, avgCpl: 550 }]);
+    expect(s.byMotif.find((r) => r.key === "missed forced mate")).toEqual({
+      key: "missed forced mate",
+      n: 1,
+      pct: 50,
+      avgCpl: 1000,
+    });
+  });
+});
+
+describe("topNamedMotif", () => {
+  const row = (key: string, n: number) => ({ key, n, pct: 0, avgCpl: 0 });
+
+  it("skips a larger 'other' bucket in favor of the biggest named motif", () => {
+    const byMotif = [row("other", 28), row("hanging piece", 20), row("missed win of material", 19)];
+    expect(topNamedMotif(byMotif)?.key).toBe("hanging piece");
+  });
+
+  it("skips 'unknown' too", () => {
+    expect(topNamedMotif([row("unknown", 5), row("missed forced mate", 2)])?.key).toBe("missed forced mate");
+  });
+
+  it("returns null when only fallback buckets exist", () => {
+    expect(topNamedMotif([row("other", 3), row("unknown", 1)])).toBeNull();
+  });
+
+  it("returns null on empty input", () => {
+    expect(topNamedMotif([])).toBeNull();
   });
 });

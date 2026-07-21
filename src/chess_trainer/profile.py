@@ -22,6 +22,11 @@ ENDGAME_NPM_MAX = 20
 # ~11 plies; forcing tactics resolve well within this, and capping bounds positional drift.
 PV_PLY_CAP = 16
 MATERIAL_GAIN_MIN = 2  # net pawns the best line must win to count as "missed win of material"
+# Mate scores enter cpl as ~9900 sentinels (analyze.py's mate handling), so one missed mate
+# would otherwise dominate every average. Cap each mistake's contribution to averages at 1000
+# (the lichess accuracy-model convention); counts/percentages stay uncapped. Mirrored in the
+# web port (web/src/profile.ts).
+CPL_AVG_CAP = 1000
 
 REASON = {
     "missed forced mate": "you missed a forced mate",
@@ -175,7 +180,7 @@ def _grouped(conn, column: str) -> list[dict]:
         f"WITH t AS (SELECT COUNT(*) AS c FROM puzzles) "
         f"SELECT COALESCE({column}, 'unknown') AS key, COUNT(*) AS n, "
         f"       ROUND(100.0 * COUNT(*) / (SELECT c FROM t), 1) AS pct, "
-        f"       ROUND(AVG(cpl), 0) AS avg_cpl "
+        f"       ROUND(AVG(MIN(cpl, {CPL_AVG_CAP})), 0) AS avg_cpl "
         f"FROM puzzles GROUP BY key ORDER BY n DESC"
     ).fetchall()
     return [dict(r) for r in rows]
@@ -193,7 +198,7 @@ def _by_move_bucket(conn) -> list[dict]:
         "  FROM puzzles) "
         "SELECT bucket AS key, COUNT(*) AS n, "
         "       ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM puzzles), 1) AS pct, "
-        "       ROUND(AVG(cpl), 0) AS avg_cpl "
+        f"       ROUND(AVG(MIN(cpl, {CPL_AVG_CAP})), 0) AS avg_cpl "
         "FROM bucketed GROUP BY bucket ORDER BY MIN(source_ply)"
     ).fetchall()
     return [dict(r) for r in rows]
@@ -202,7 +207,9 @@ def _by_move_bucket(conn) -> list[dict]:
 def weakness_summary(cfg: Config) -> dict:
     conn = db.connect(cfg.db_path)
     db.init_schema(conn)
-    total_row = conn.execute("SELECT COUNT(*) AS c, AVG(cpl) AS avg_cpl FROM puzzles").fetchone()
+    total_row = conn.execute(
+        f"SELECT COUNT(*) AS c, AVG(MIN(cpl, {CPL_AVG_CAP})) AS avg_cpl FROM puzzles"
+    ).fetchone()
     total = total_row["c"] or 0
     summary = {
         "total_mistakes": total,
@@ -241,7 +248,10 @@ def print_weakness_summary(cfg: Config) -> None:
     def top(rows):
         return max(rows, key=lambda r: r["n"]) if rows else None
 
-    ph, mo, bu = top(s["by_phase"]), top(s["by_motif"]), top(s["by_move_bucket"])
+    # The fallback buckets make lousy highlights — prefer the biggest *named* motif
+    # (mirrors web/src/profile.ts topNamedMotif).
+    named_motifs = [r for r in s["by_motif"] if r["key"] not in ("other", "unknown")]
+    ph, mo, bu = top(s["by_phase"]), top(named_motifs), top(s["by_move_bucket"])
     print("Highlights:")
     if ph:
         print(f"  - {ph['pct']}% of your rating-losing mistakes happen in the {ph['key']}.")

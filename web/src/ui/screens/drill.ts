@@ -1,7 +1,7 @@
 import type { AppContext } from "../app";
 import { el, mount } from "../dom";
 import { mountPuzzleBoard, lockBoard, playOpponentReply, armForMove, showFrame } from "../board";
-import { turnColorOf, moveToUci, planSolutionLine, buildReviewFrames } from "../board-logic";
+import { turnColorOf, moveToUci, planSolutionLine, buildReviewFrames, uciToSan } from "../board-logic";
 import type { UserMoveStep } from "../board-logic";
 import { celebratePop, elementOrigin } from "../celebrate";
 import { getAllPuzzles, getReviewByKey, recordResult, recordProgress } from "../../db";
@@ -298,7 +298,7 @@ export function renderDrill(ctx: AppContext): void {
           const reasonText = m === 0 ? (pz.motif ? REASON[pz.motif] : REASON.other) : "That wasn't the winning continuation.";
           feedbackEl.replaceChildren(
             el("p", { class: "drill__feedback-text drill__feedback-text--miss", text: "✗ Not quite." }),
-            el("p", { class: "muted" }, el("span", { text: "Best move: " }), el("span", { class: "notation", text: step.expectedUci })),
+            el("p", { class: "muted" }, el("span", { text: "Best move: " }), el("span", { class: "notation", text: uciToSan(step.fenBefore, step.expectedUci) })),
             el("p", { class: "muted", text: reasonText }),
           );
           // Reset the board from the wrong move back to the position they missed, so

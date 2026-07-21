@@ -179,6 +179,11 @@ body {
   line-height: 1.5;
 }
 
+.footnote {
+  margin-top: 14px;
+  font-size: 12px;
+}
+
 .notation {
   font-family: var(--mono);
   font-weight: 600;

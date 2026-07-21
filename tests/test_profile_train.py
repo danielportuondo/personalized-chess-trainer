@@ -2,8 +2,9 @@ import datetime
 
 import chess
 
+from chess_trainer.config import Config
 from chess_trainer.extract import dedupe_key
-from chess_trainer.profile import classify_motif
+from chess_trainer.profile import classify_motif, weakness_summary
 from chess_trainer.train import _read_move, sm2_update
 
 TODAY = datetime.date(2026, 1, 1)
@@ -88,6 +89,48 @@ def test_read_move_eof_ends_session(monkeypatch):
 
     monkeypatch.setattr("builtins.input", raise_eof)
     assert _read_move(chess.Board()) is None
+
+
+def test_weakness_summary_caps_mate_sentinel_cpl(tmp_path):
+    # A missed mate carries cpl ~9900 (mate sentinel minus a small eval); uncapped
+    # it would dominate every average. Counts must stay uncapped.
+    from chess_trainer import db as ct_db
+
+    cfg = Config(
+        username="t",
+        stockfish_path="stockfish",
+        contact_email="t@example.com",
+        db_path=tmp_path / "t.db",
+    )
+    conn = ct_db.connect(cfg.db_path)
+    ct_db.init_schema(conn)
+    # puzzles FK-chains to move_evals -> raw_games, so seed minimal parents first.
+    conn.execute("INSERT INTO raw_games (url, archive_url, pgn) VALUES ('g', 'a', '1. e4 *')")
+    conn.executemany(
+        "INSERT INTO move_evals (game_url, ply, fullmove_no, player_color, fen_before,"
+        " played_move_uci, best_move_uci, best_line_uci, eval_before_cp, eval_after_played_cp,"
+        " cpl) VALUES ('g', ?, 1, 'white', 'f', 'e2e4', 'e2e4', 'e2e4', 0, 0, ?)",
+        [(1, 9900), (3, 100)],
+    )
+    rows = [
+        ("f1", "e2e4", "e2e4", "e2e4", 9900, 9500, "opening", "missed forced mate", "g", 1, "k1"),
+        ("f2", "e2e4", "e2e4", "e2e4", 100, 0, "opening", "hanging piece", "g", 3, "k2"),
+    ]
+    conn.executemany(
+        "INSERT INTO puzzles (fen, solution_line_uci, played_move_uci, best_move_uci, cpl,"
+        " eval_before_cp, phase, motif, source_game_url, source_ply, dedupe_key)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+    conn.close()
+
+    s = weakness_summary(cfg)
+    assert s["avg_cpl"] == 550.0  # (1000 + 100) / 2, not (9900 + 100) / 2
+    assert s["by_phase"] == [{"key": "opening", "n": 2, "pct": 100.0, "avg_cpl": 550.0}]
+    mate_row = next(r for r in s["by_motif"] if r["key"] == "missed forced mate")
+    assert mate_row["avg_cpl"] == 1000.0
+    assert mate_row["n"] == 1
 
 
 def test_dedupe_key_collapses_move_counters():

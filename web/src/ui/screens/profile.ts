@@ -1,7 +1,7 @@
 import type { AppContext } from "../app";
 import { el, mount } from "../dom";
 import { getMeta, getAllPuzzles, getReviewByKey } from "../../db";
-import { weaknessSummary } from "../../profile";
+import { topNamedMotif, weaknessSummary } from "../../profile";
 import { dueCandidates } from "../../review";
 import { isDrillable } from "../../curate";
 import { todayIso } from "../../dates";
@@ -38,7 +38,7 @@ function barRow(row: GroupRow, pending: HTMLElement[]): HTMLElement {
       "div",
       { class: "bar__label" },
       el("span", { text: row.key }),
-      el("span", { class: "bar__meta", text: `${row.n} · ${row.pct}% · avg ${row.avgCpl} cpl` }),
+      el("span", { class: "bar__meta", text: `${row.n} · ${row.pct}% · avg ${row.avgCpl} cp` }),
     ),
     el("div", { class: "bar__track" }, fill),
   );
@@ -77,9 +77,9 @@ export function renderProfile(ctx: AppContext, params?: unknown): void {
       const dueCount = dueCandidates(puzzles, reviewByKey, today).filter(isDrillable).length;
       const hasFlash = Boolean(newGames || newPuzzles);
       const isEmpty = puzzles.length === 0;
-      const topMotif = summary.byMotif.length
-        ? summary.byMotif.reduce((a, b) => (b.n > a.n ? b : a))
-        : null;
+      // Never headline the classifier's fallback bucket — a profile whose top
+      // insight is "other" reads as broken even when the count is honest.
+      const topMotif = topNamedMotif(summary.byMotif);
 
       const streak = statTile("tile--flame", "🔥", "Day streak");
       const solved = statTile("tile--xp", "⚡", "Solved");
@@ -153,11 +153,15 @@ export function renderProfile(ctx: AppContext, params?: unknown): void {
                     : null,
                   el("p", {
                     class: "subtitle",
-                    text: `${summary.totalMistakes} mistakes · avg ${summary.avgCpl} cpl`,
+                    text: `${summary.totalMistakes} mistakes · avg loss ${summary.avgCpl} cp`,
                   }),
                   barGroup("By mistake type", summary.byMotif, barFills),
                   barGroup("By phase", summary.byPhase, barFills),
                   barGroup("By game stage", summary.byMoveBucket, barFills),
+                  el("p", {
+                    class: "muted footnote",
+                    text: "cp = centipawns, hundredths of a pawn of engine eval — how much a mistake cost. Mate-losing blunders count as 1000.",
+                  }),
                 ),
             !isEmpty ? startBtn : null,
             !isEmpty && dueCount === 0

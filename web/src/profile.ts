@@ -23,6 +23,12 @@ const ENDGAME_NPM_MAX = 20;
 const PV_PLY_CAP = 16;
 const MATE_CP_THRESHOLD = 9000;
 const MATERIAL_GAIN_MIN = 2;
+// Mate scores enter cpl as ~9900 sentinels (see analysis.ts mateScore), so one
+// missed mate would otherwise dominate every average it touches. Cap each
+// mistake's contribution to averages at 1000 (the lichess accuracy-model
+// convention: past a queen of eval, "how lost" stops being informative).
+// Counts/percentages stay uncapped. Mirrored in profile.py's SQL.
+const CPL_AVG_CAP = 1000;
 
 export const REASON: Record<Motif, string> = {
   "missed forced mate": "you missed a forced mate",
@@ -192,7 +198,7 @@ function groupBy(puzzles: Puzzle[], keyFn: (p: Puzzle) => string): GroupRow[] {
       order.push(key);
     }
     counts.set(key, counts.get(key)! + 1);
-    cplSums.set(key, cplSums.get(key)! + p.cpl);
+    cplSums.set(key, cplSums.get(key)! + Math.min(p.cpl, CPL_AVG_CAP));
   }
   const rows: GroupRow[] = order.map((key) => {
     const n = counts.get(key)!;
@@ -228,7 +234,7 @@ export function weaknessSummary(puzzles: Puzzle[]): WeaknessSummary {
   }
 
   const avgCpl = pyRound(
-    puzzles.reduce((sum, p) => sum + p.cpl, 0) / total,
+    puzzles.reduce((sum, p) => sum + Math.min(p.cpl, CPL_AVG_CAP), 0) / total,
     1
   );
   const byPhase = groupBy(puzzles, (p) => p.phase ?? "unknown");
@@ -239,4 +245,13 @@ export function weaknessSummary(puzzles: Puzzle[]): WeaknessSummary {
   );
 
   return { totalMistakes: total, avgCpl, byPhase, byMotif, byMoveBucket };
+}
+
+// The biggest *named* leak — "other" is the classifier's fallback bucket and
+// "unknown" a missing tag, so neither makes a headline insight even when it's
+// the largest group. Null when nothing named exists.
+export function topNamedMotif(byMotif: GroupRow[]): GroupRow | null {
+  const named = byMotif.filter((r) => r.key !== "other" && r.key !== "unknown");
+  if (named.length === 0) return null;
+  return named.reduce((a, b) => (b.n > a.n ? b : a));
 }
