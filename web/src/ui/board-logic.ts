@@ -110,6 +110,18 @@ export function planSolutionLine(
   return { moves };
 }
 
+// True iff playing `uci` from `fen` delivers immediate checkmate. Drills accept
+// such a move even when it differs from the stored line (lichess convention) —
+// dual-mate positions would otherwise unfairly reject the equally-valid mate.
+// Illegal/unparseable moves are false; a bad FEN throws like applyUci.
+export function deliversMate(fen: string, uci: string): boolean {
+  const pos = position(fen);
+  const move = parseUci(uci);
+  if (!move || !pos.isLegal(move)) return false;
+  pos.play(move);
+  return pos.isCheckmate();
+}
+
 // Renders a UCI token as SAN for display ("h5f7" -> "Qxf7#"). Falls back to the
 // raw token on an unparseable/illegal move so hand-authored data degrades to the
 // old UCI display instead of throwing mid-render.

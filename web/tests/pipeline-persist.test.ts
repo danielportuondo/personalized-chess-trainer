@@ -1,10 +1,19 @@
 import "fake-indexeddb/auto";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { analyzeAndPersist } from "../src/pipeline";
-import { openTrainerDb, DB_NAME, getAnalyzedGameUrls, getAllPuzzles } from "../src/db";
+import {
+  openTrainerDb,
+  DB_NAME,
+  getAnalyzedGameUrls,
+  getAllPuzzles,
+  putPuzzlesIfAbsent,
+  getReviewByKey,
+  recordResult,
+} from "../src/db";
 import { BASE_URL } from "../src/chesscom";
 import type { AnalysisInfo, AnalyseFn } from "../src/analysis";
 import type { createEngine, Engine, Top2 } from "../src/engine";
+import type { Puzzle } from "../src/types";
 
 afterEach(async () => {
   await indexedDB.deleteDatabase(DB_NAME);
@@ -168,61 +177,131 @@ describe("analyzeAndPersist", () => {
     db.close();
   });
 
-  it("flags new puzzles ambiguous via MultiPV and never re-checks persisted ones", async () => {
+  // Curate-passing fixtures for the ambiguity gate: the MultiPV check only runs
+  // on puzzles curation would serve, so these games' best lines must reach a
+  // concrete payoff. dportuondo (Black) misses a hanging bishop (2...gxh6) and
+  // a mate-in-1 (2...Qh4#), blundering with ...a6 instead.
+  const GAME_MATERIAL_PGN = '[White "opp1"]\n[Black "dportuondo"]\n\n1. d4 d5 2. Bh6 a6 *';
+  const GAME_MATE_PGN = '[White "opp3"]\n[Black "dportuondo"]\n\n1. f3 e5 2. g4 a6 *';
+
+  // 2 player moves x (before, after) per game.
+  const MATERIAL_INFOS: AnalysisInfo[] = [
+    { cp: 0, mate: null, pv: ["d7d5"] },
+    { cp: 0, mate: null, pv: [] },
+    { cp: 300, mate: null, pv: ["g7h6"] }, // gxh6 banks the bishop -> drillable
+    { cp: 0, mate: null, pv: [] },
+  ];
+  const QUIET_INFOS: AnalysisInfo[] = [
+    { cp: 10, mate: null, pv: ["e7e5"] },
+    { cp: 800, mate: null, pv: [] }, // cpl 810 -> puzzle, but the quiet line isn't drillable
+  ];
+  const MATE_INFOS: AnalysisInfo[] = [
+    { cp: 0, mate: null, pv: ["e7e5"] },
+    { cp: 0, mate: null, pv: [] },
+    { cp: null, mate: 1, pv: ["d8h4"] }, // Qh4# missed -> drillable mate
+    { cp: 0, mate: null, pv: [] },
+  ];
+
+  it("uniqueness-checks only curate-passing puzzles (50cp gap, dual mates exempt) and heals stored verdicts", async () => {
     const db = await openTrainerDb();
 
     const gamesRef = {
       games: [
-        rawGame({ url: "game-1", pgn: GAME1_PGN, end_time: 300, white: { username: "opp1", result: "win" } }),
-        rawGame({ url: "game-2", pgn: GAME2_PGN, end_time: 200, white: { username: "opp2", result: "win" } }),
+        rawGame({ url: "game-material", pgn: GAME_MATERIAL_PGN, end_time: 300, white: { username: "opp1", result: "win" } }),
+        rawGame({ url: "game-quiet", pgn: GAME1_PGN, end_time: 200, white: { username: "opp2", result: "win" } }),
       ],
     };
     const fetchImpl = fakeFetch(gamesRef);
 
-    const infos: AnalysisInfo[] = [
-      { cp: 10, mate: null, pv: ["e7e5"] },
-      { cp: 800, mate: null, pv: [] },
-      { cp: 20, mate: null, pv: ["d7d5"] },
-      { cp: 900, mate: null, pv: [] },
-      { cp: 30, mate: null, pv: ["c7c5"] },
-      { cp: 1000, mate: null, pv: [] },
-    ];
-    // Extraction orders by cpl DESC, so run 1 checks game-2's puzzle (cpl 920)
-    // before game-1's (cpl 810); run 2 checks only game-3's.
+    const infos: AnalysisInfo[] = [...MATERIAL_INFOS, ...QUIET_INFOS, ...MATE_INFOS];
     const top2s: Top2[] = [
-      // game-2: second move within 100cp of best -> ambiguous
-      { best: { cp: 850, mate: null, pv: ["d7d5"] }, second: { cp: 800, mate: null, pv: ["g8f6"] } },
-      // game-1: best is mate (bounded ~9998) vs cp 300 -> clearly unique
-      { best: { cp: null, mate: 2, pv: ["e7e5"] }, second: { cp: 300, mate: null, pv: ["b8c6"] } },
-      // game-3: engine reports a single line -> unique
-      { best: { cp: 700, mate: null, pv: ["c7c5"] }, second: undefined },
+      // run 1, game-material's puzzle: runner-up 30cp behind -> ambiguous at 50
+      { best: { cp: 850, mate: null, pv: ["g7h6"] }, second: { cp: 820, mate: null, pv: ["g8f6"] } },
+      // run 2, game-mate's puzzle: both top moves mate -> either wins, NOT ambiguous
+      { best: { cp: null, mate: 1, pv: ["d8h4"] }, second: { cp: null, mate: 3, pv: ["g8f6"] } },
+      // run 2, healing re-check of game-material: gap exactly 50 -> unique now
+      { best: { cp: 850, mate: null, pv: ["g7h6"] }, second: { cp: 800, mate: null, pv: ["g8f6"] } },
     ];
     const { createEngineFn, top2FensSeen } = makeEngineFn(infos, top2s);
+    const byGame = (puzzles: Puzzle[], url: string) => puzzles.find((p) => p.sourceGameUrl === url)!;
 
     await analyzeAndPersist("dportuondo", db, { fetchImpl, createEngineFn });
 
     const afterRun1 = await getAllPuzzles(db, "dportuondo");
-    const byGame = (url: string) => afterRun1.find((p) => p.sourceGameUrl === url)!;
-    expect(top2FensSeen).toHaveLength(2);
-    expect(byGame("game-2").ambiguous).toBe(true);
-    expect(byGame("game-1").ambiguous).toBe(false);
+    expect(afterRun1).toHaveLength(2);
+    // The quiet puzzle is skipped outright: curation would never serve it.
+    expect(top2FensSeen).toEqual([byGame(afterRun1, "game-material").fen]);
+    expect(byGame(afterRun1, "game-material").ambiguous).toBe(true);
+    expect(byGame(afterRun1, "game-quiet").ambiguous).toBeUndefined();
 
     gamesRef.games.push(
-      rawGame({ url: "game-3", pgn: GAME3_PGN, end_time: 100, white: { username: "opp3", result: "win" } })
+      rawGame({ url: "game-mate", pgn: GAME_MATE_PGN, end_time: 100, white: { username: "opp3", result: "win" } })
     );
     await analyzeAndPersist("dportuondo", db, { fetchImpl, createEngineFn });
 
     const afterRun2 = await getAllPuzzles(db, "dportuondo");
-    const byGame2 = (url: string) => afterRun2.find((p) => p.sourceGameUrl === url)!;
-    // Only the new puzzle was uniqueness-checked; persisted verdicts survive first-wins.
+    // New puzzle checked first, then the stored flagged one re-checked (healed).
     expect(top2FensSeen).toHaveLength(3);
-    expect(byGame2("game-3").ambiguous).toBe(false);
-    expect(byGame2("game-2").ambiguous).toBe(true);
-    expect(byGame2("game-1").ambiguous).toBe(false);
+    expect(top2FensSeen[1]).toBe(byGame(afterRun2, "game-mate").fen);
+    expect(top2FensSeen[2]).toBe(byGame(afterRun2, "game-material").fen);
+    expect(byGame(afterRun2, "game-mate").ambiguous).toBe(false);
+    expect(byGame(afterRun2, "game-material").ambiguous).toBe(false);
+    expect(byGame(afterRun2, "game-quiet").ambiguous).toBeUndefined();
 
-    // Idempotent run: no pending games -> no engine -> no further checks.
+    // Idempotent run: no pending games -> no engine -> no checks, no healing.
     await analyzeAndPersist("dportuondo", db, { fetchImpl, createEngineFn });
     expect(top2FensSeen).toHaveLength(3);
+
+    db.close();
+  });
+
+  it("heals legacy flagged verdicts only for puzzles curation serves, preserving review state", async () => {
+    const db = await openTrainerDb();
+
+    // Legacy rows: the old gate flagged puzzles regardless of drillability.
+    const MATE_IN_1_FEN = "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4";
+    const RECAPTURE_FEN = "6k1/8/4p3/3n4/8/8/8/3R2K1 w - - 0 1";
+    const legacy = (fen: string, line: string): Puzzle => ({
+      fen,
+      solutionLineUci: line,
+      playedMoveUci: "a2a3",
+      bestMoveUci: line.split(" ")[0],
+      cpl: 500,
+      evalBeforeCp: 100,
+      ambiguous: true,
+      sourceGameUrl: "old-game",
+      sourcePly: 1,
+      dedupeKey: fen.split(" ").slice(0, 4).join(" "),
+    });
+    await putPuzzlesIfAbsent(db, "dportuondo", [
+      legacy(MATE_IN_1_FEN, "h5f7"), // drillable -> re-checked
+      legacy(RECAPTURE_FEN, "d1d5 e6d5 g1f1 g8f7"), // recapture voids the gain -> not drillable, left alone
+    ]);
+    const mateKey = MATE_IN_1_FEN.split(" ").slice(0, 4).join(" ");
+    await recordResult(db, "dportuondo", mateKey, true, "2026-01-01");
+
+    const gamesRef = {
+      games: [rawGame({ url: "game-1", pgn: GAME1_PGN, end_time: 300, white: { username: "opp1", result: "win" } })],
+    };
+    // cpl 10: the pending game yields no puzzle; it exists to spin the engine up.
+    const infos: AnalysisInfo[] = [
+      { cp: 10, mate: null, pv: ["e7e5"] },
+      { cp: 0, mate: null, pv: [] },
+    ];
+    const top2s: Top2[] = [
+      { best: { cp: 900, mate: null, pv: ["h5f7"] }, second: { cp: 100, mate: null, pv: ["c4f7"] } },
+    ];
+    const { createEngineFn, top2FensSeen } = makeEngineFn(infos, top2s);
+
+    await analyzeAndPersist("dportuondo", db, { fetchImpl: fakeFetch(gamesRef), createEngineFn });
+
+    expect(top2FensSeen).toEqual([MATE_IN_1_FEN]);
+    const puzzles = await getAllPuzzles(db, "dportuondo");
+    const byFen = (fen: string) => puzzles.find((p) => p.fen === fen)!;
+    expect(byFen(MATE_IN_1_FEN).ambiguous).toBe(false);
+    expect(byFen(RECAPTURE_FEN).ambiguous).toBe(true);
+    const byKey = await getReviewByKey(db, "dportuondo");
+    expect(byKey[mateKey].reps).toBe(1);
 
     db.close();
   });

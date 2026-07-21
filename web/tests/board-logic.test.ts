@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { turnColorOf, legalDests, moveToUci, applyUci, planSolutionLine, buildReviewFrames, uciToSan } from "../src/ui/board-logic";
+import { turnColorOf, legalDests, moveToUci, applyUci, planSolutionLine, buildReviewFrames, uciToSan, deliversMate } from "../src/ui/board-logic";
 
 const STARTPOS = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const BLACK_TO_MOVE = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1";
@@ -165,5 +165,23 @@ describe("uciToSan", () => {
 
   it("falls back to the raw token when illegal", () => {
     expect(uciToSan(STARTPOS, "a1a8")).toBe("a1a8");
+  });
+});
+
+describe("deliversMate", () => {
+  // Scholar's mate position: Qxf7# mates, Bxf7+ is only check (Ke7 escapes).
+  const SCHOLARS_FEN = "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4";
+
+  it("true for a move that delivers immediate checkmate", () => {
+    expect(deliversMate(SCHOLARS_FEN, "h5f7")).toBe(true);
+  });
+
+  it("false for a legal move that merely checks", () => {
+    expect(deliversMate(SCHOLARS_FEN, "c4f7")).toBe(false);
+  });
+
+  it("false for illegal or unparseable input", () => {
+    expect(deliversMate(SCHOLARS_FEN, "a1a8")).toBe(false);
+    expect(deliversMate(SCHOLARS_FEN, "zzzz")).toBe(false);
   });
 });

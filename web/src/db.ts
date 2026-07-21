@@ -82,6 +82,19 @@ export async function putPuzzlesIfAbsent(
   return inserted;
 }
 
+// Overwrites existing rows (unlike putPuzzlesIfAbsent's first-wins) — used to
+// heal analysis-time verdicts (e.g. `ambiguous`) on already-persisted puzzles.
+// Review state lives in its own store, so scheduling is never touched.
+export async function putPuzzles(
+  db: IDBPDatabase<TrainerSchema>,
+  username: string,
+  puzzles: Puzzle[],
+): Promise<void> {
+  for (const puzzle of puzzles) {
+    await db.put("puzzles", { ...puzzle, username });
+  }
+}
+
 export async function getAllPuzzles(
   db: IDBPDatabase<TrainerSchema>,
   username: string,

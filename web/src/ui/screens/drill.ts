@@ -1,7 +1,7 @@
 import type { AppContext } from "../app";
 import { el, mount } from "../dom";
 import { mountPuzzleBoard, lockBoard, playOpponentReply, armForMove, showFrame } from "../board";
-import { turnColorOf, moveToUci, planSolutionLine, buildReviewFrames, uciToSan } from "../board-logic";
+import { turnColorOf, moveToUci, planSolutionLine, buildReviewFrames, uciToSan, deliversMate, applyUci } from "../board-logic";
 import type { UserMoveStep } from "../board-logic";
 import { celebratePop, elementOrigin } from "../celebrate";
 import { getAllPuzzles, getReviewByKey, recordResult, recordProgress } from "../../db";
@@ -120,8 +120,9 @@ export function renderDrill(ctx: AppContext): void {
         let hintUsed = false;
         let api: Api;
         // Post-solve review: the flattened ply-by-ply positions, plus the live keydown
-        // handler (present only while reviewing; torn down on advance/quit).
-        const frames = buildReviewFrames(moves);
+        // handler (present only while reviewing; torn down on advance/quit). Reassigned
+        // when an off-line mate ends the puzzle early (see onMove's altMate).
+        let frames = buildReviewFrames(moves);
         let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
         const boardEl = el("div", { class: "board" });
@@ -388,8 +389,12 @@ export function renderDrill(ctx: AppContext): void {
           if (resolved || busy) return;
           busy = true;
           const step = moves[m];
-          const passed = moveToUci(step.fenBefore, orig, dest) === step.expectedUci;
-          const isFinal = m === moves.length - 1;
+          const playedUci = moveToUci(step.fenBefore, orig, dest);
+          // An off-line move that mates on the spot still solves the puzzle
+          // (lichess convention) — and ends it, checkmate leaves no reply.
+          const altMate = playedUci !== step.expectedUci && deliversMate(step.fenBefore, playedUci);
+          const passed = playedUci === step.expectedUci || altMate;
+          const isFinal = m === moves.length - 1 || altMate;
 
           if (!passed) {
             lockBoard(api);
@@ -401,6 +406,18 @@ export function renderDrill(ctx: AppContext): void {
           }
 
           if (isFinal) {
+            if (altMate) {
+              // Review shows the mate the user actually played, not the stored
+              // PV's divergent tail. frames[2m] is the position they faced.
+              frames = [
+                ...frames.slice(0, 2 * m + 1),
+                {
+                  fen: applyUci(step.fenBefore, playedUci),
+                  lastMove: [orig, dest] as [string, string],
+                  label: `${turnColorOf(step.fenBefore) === "white" ? "White" : "Black"}: ${uciToSan(step.fenBefore, playedUci)}`,
+                },
+              ];
+            }
             lockBoard(api);
             flashBoard("correct");
             await finalize(true);

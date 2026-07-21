@@ -4,6 +4,7 @@ import {
   openTrainerDb,
   DB_NAME,
   putPuzzlesIfAbsent,
+  putPuzzles,
   getAllPuzzles,
   getReviewByKey,
   recordResult,
@@ -60,6 +61,26 @@ describe("putPuzzlesIfAbsent", () => {
     expect(all).toHaveLength(1);
     expect(all[0].cpl).toBe(50);
     expect(all[0].fen).toBe("fen");
+
+    db.close();
+  });
+});
+
+describe("putPuzzles", () => {
+  it("overwrites an existing row in place and leaves reviewState intact", async () => {
+    const db = await openTrainerDb();
+
+    await putPuzzlesIfAbsent(db, "alice", [makePuzzle("dk1", { ambiguous: true })]);
+    await recordResult(db, "alice", "dk1", true, TODAY);
+
+    await putPuzzles(db, "alice", [makePuzzle("dk1", { ambiguous: false })]);
+
+    const all = await getAllPuzzles(db, "alice");
+    expect(all).toHaveLength(1);
+    expect(all[0].ambiguous).toBe(false);
+
+    const byKey = await getReviewByKey(db, "alice");
+    expect(byKey["dk1"].reps).toBe(1);
 
     db.close();
   });

@@ -9,12 +9,14 @@ import { analyzeGame, mateScore } from "./analysis";
 import { createEngine, type Engine } from "./engine";
 import { extractPuzzles } from "./extract";
 import { tagMotifs, weaknessSummary } from "./profile";
+import { curateLine } from "./curate";
 import {
   type TrainerSchema,
   getAnalyzedGameUrls,
   putAnalysis,
   getAllEvals,
   putPuzzlesIfAbsent,
+  putPuzzles,
   getAllPuzzles,
 } from "./db";
 
@@ -32,10 +34,22 @@ const DEFAULT_DEPTH = 12;
 // A puzzle's solution counts as unique when the second-best move is at least
 // this much worse (mate scores bounded via mateScore). Below the gap the
 // position has two near-equal answers and the drill would unfairly reject one.
-const UNIQUE_GAP_CP = 100;
+// Calibrated in docs/evaluation.md §4: 100 rejected ~30% of drillable puzzles;
+// 50 keeps the genuinely dual-solution filtering.
+const UNIQUE_GAP_CP = 50;
 
 function boundedCp(info: { cp: number | null; mate: number | null }): number {
   return info.mate != null ? mateScore(info.mate) : (info.cp as number);
+}
+
+// MultiPV=2 verdict. No runner-up (forced single reply) is unique; two mating
+// moves are unique too — either wins, and the drill accepts any immediate mate
+// (bounded mate scores would otherwise gap ~1cp and always flag dual mates).
+async function isAmbiguous(engine: Engine, fen: string): Promise<boolean> {
+  const { best, second } = await engine.analyseTop2(fen);
+  if (second == null) return false;
+  if (best.mate != null && best.mate > 0 && second.mate != null && second.mate > 0) return false;
+  return boundedCp(best) - boundedCp(second) < UNIQUE_GAP_CP;
 }
 
 export async function runPipeline(
@@ -107,15 +121,33 @@ export async function analyzeAndPersist(
     const allEvals = await getAllEvals(db, user);
     const puzzles = extractPuzzles(allEvals);
     tagMotifs(puzzles, allEvals);
-    if (engine) {
-      const existing = new Set((await getAllPuzzles(db, user)).map((p) => p.dedupeKey));
-      for (const p of puzzles) {
-        if (existing.has(p.dedupeKey)) continue;
-        const { best, second } = await engine.analyseTop2(p.fen);
-        p.ambiguous = second != null && boundedCp(best) - boundedCp(second) < UNIQUE_GAP_CP;
-      }
+    if (!engine) return putPuzzlesIfAbsent(db, user, puzzles);
+
+    const stored = await getAllPuzzles(db, user);
+    const existing = new Set(stored.map((p) => p.dedupeKey));
+    for (const p of puzzles) {
+      if (existing.has(p.dedupeKey)) continue;
+      // Only puzzles curation will serve are worth an engine check — ~74% of
+      // MultiPV calls previously landed on positions drills never show
+      // (docs/evaluation.md §4). Skipped puzzles keep ambiguous: undefined.
+      if (curateLine(p.fen, p.solutionLineUci) === null) continue;
+      p.ambiguous = await isAmbiguous(engine, p.fen);
     }
-    return putPuzzlesIfAbsent(db, user, puzzles);
+    const inserted = await putPuzzlesIfAbsent(db, user, puzzles);
+
+    // Heal stored verdicts from older, stricter gate rules (100cp, no dual-mate
+    // exemption): re-check flagged puzzles curation would serve and overwrite.
+    // Rows still ambiguous at the current threshold get re-checked on the next
+    // engine run — bounded, since a healed verdict leaves this set for good.
+    const flagged = stored.filter(
+      (p) => p.ambiguous === true && curateLine(p.fen, p.solutionLineUci) !== null
+    );
+    for (const p of flagged) {
+      p.ambiguous = await isAmbiguous(engine, p.fen);
+    }
+    await putPuzzles(db, user, flagged);
+
+    return inserted;
   }
 
   let newPuzzles: number;
