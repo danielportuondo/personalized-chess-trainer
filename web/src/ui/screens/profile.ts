@@ -122,7 +122,7 @@ export function renderProfile(ctx: AppContext, params?: unknown): void {
                   el("span", { class: "insight__icon", text: "✅" }),
                   el("p", {
                     class: "insight__text",
-                    text: `Analyzed ${newGames ?? 0} new game(s) and found ${newPuzzles ?? 0} new puzzle(s).`,
+                    text: `Analyzed ${newGames ?? 0} new ${newGames === 1 ? "game" : "games"} and found ${newPuzzles ?? 0} new ${newPuzzles === 1 ? "puzzle" : "puzzles"}.`,
                   }),
                 )
               : null,
