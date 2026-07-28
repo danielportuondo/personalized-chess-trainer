@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { fetchArchives, parseGames, fetchRecentGames, normalizeResult, BASE_URL } from "../src/chesscom";
+import { fetchArchives, parseGames, fetchRecentGames, normalizeResult, provenanceFrom, BASE_URL } from "../src/chesscom";
 
 // Minimal fake matching the Response surface chesscom.ts actually reads:
 // ok, status, json(), headers.get(name). Nothing richer.
@@ -112,6 +112,80 @@ describe("parseGames", () => {
 
   it("returns [] when payload.games is missing", () => {
     expect(parseGames(archiveUrl, {})).toEqual([]);
+  });
+});
+
+describe("provenanceFrom", () => {
+  // Build through parseGames so fixtures carry the exact null-normalization
+  // provenanceFrom sees in production.
+  const game = (overrides: Record<string, unknown> = {}) => parseGames(JAN, { games: [rawGame(overrides)] })[0];
+
+  it("user as white winner -> win vs the black opponent, all fields carried", () => {
+    expect(provenanceFrom(game(), "bob")).toEqual({
+      opponent: "alice",
+      playerColor: "white",
+      endTime: 1000,
+      timeClass: "rapid",
+      result: "win",
+    });
+  });
+
+  it("user as black when white wins -> loss", () => {
+    expect(provenanceFrom(game(), "alice")).toEqual({
+      opponent: "bob",
+      playerColor: "black",
+      endTime: 1000,
+      timeClass: "rapid",
+      result: "loss",
+    });
+  });
+
+  it("black win -> win for the black player, loss for white", () => {
+    const g = game({ white: { username: "bob", result: "checkmated" }, black: { username: "alice", result: "win" } });
+    expect(provenanceFrom(g, "alice")?.result).toBe("win");
+    expect(provenanceFrom(g, "bob")?.result).toBe("loss");
+  });
+
+  it("draw maps to draw for either side", () => {
+    const g = game({ white: { username: "bob", result: "agreed" }, black: { username: "alice", result: "agreed" } });
+    expect(provenanceFrom(g, "bob")?.result).toBe("draw");
+    expect(provenanceFrom(g, "alice")?.result).toBe("draw");
+  });
+
+  it("matches usernames case-insensitively both directions, keeping the opponent's original casing", () => {
+    const g = game({ white: { username: "BobRoss", result: "win" }, black: { username: "AliceW", result: "checkmated" } });
+    expect(provenanceFrom(g, "bobross")?.opponent).toBe("AliceW");
+    expect(provenanceFrom(g, "ALICEW")?.playerColor).toBe("black");
+  });
+
+  it("returns undefined when the user played neither side", () => {
+    expect(provenanceFrom(game(), "someone-else")).toBeUndefined();
+  });
+
+  it("returns undefined when the opponent's username is missing", () => {
+    const g = game({ black: { result: "checkmated" } });
+    expect(provenanceFrom(g, "bob")).toBeUndefined();
+  });
+
+  it("passes through null endTime/timeClass and null result", () => {
+    const g = game({
+      end_time: undefined,
+      time_class: undefined,
+      white: { username: "bob" },
+      black: { username: "alice" },
+    });
+    expect(provenanceFrom(g, "bob")).toEqual({
+      opponent: "alice",
+      playerColor: "white",
+      endTime: null,
+      timeClass: null,
+      result: null,
+    });
+  });
+
+  it("prefers white when the same handle somehow played both sides", () => {
+    const g = game({ white: { username: "bob", result: "win" }, black: { username: "bob", result: "checkmated" } });
+    expect(provenanceFrom(g, "bob")?.playerColor).toBe("white");
   });
 });
 

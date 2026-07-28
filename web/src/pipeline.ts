@@ -4,7 +4,7 @@
 // minus persistence: everything here is in-memory, computed fresh per call.
 import type { IDBPDatabase } from "idb";
 import type { MoveEval, Puzzle, WeaknessSummary } from "./types";
-import { fetchRecentGames } from "./chesscom";
+import { fetchRecentGames, provenanceFrom } from "./chesscom";
 import { analyzeGame, mateScore } from "./analysis";
 import { createEngine, type Engine } from "./engine";
 import { extractPuzzles } from "./extract";
@@ -111,6 +111,7 @@ export async function analyzeAndPersist(
   const games = await fetchRecentGames(user, { maxGames, fetchImpl });
   const done = await getAnalyzedGameUrls(db, user);
   const pending = games.filter((g) => !done.has(g.url));
+  const gamesByUrl = new Map(games.map((g) => [g.url, g]));
 
   // Re-extracts from ALL persisted evals, uniqueness-checks the puzzles not yet
   // persisted (new dedupeKeys can only come from newly analyzed games, so the
@@ -121,9 +122,31 @@ export async function analyzeAndPersist(
     const allEvals = await getAllEvals(db, user);
     const puzzles = extractPuzzles(allEvals);
     tagMotifs(puzzles, allEvals);
-    if (!engine) return putPuzzlesIfAbsent(db, user, puzzles);
+    for (const p of puzzles) {
+      const game = gamesByUrl.get(p.sourceGameUrl);
+      const prov = game && provenanceFrom(game, user);
+      if (prov) p.provenance = prov;
+    }
 
     const stored = await getAllPuzzles(db, user);
+
+    // Heal provenance on rows minted before the field existed, whenever their
+    // source game re-enters the fetch window. Needs no engine, so it runs on
+    // no-pending runs too. Only rows where a value is actually derivable are
+    // written — underivable ones would otherwise be rewritten every run.
+    const healed: Puzzle[] = [];
+    for (const p of stored) {
+      if (p.provenance) continue;
+      const game = gamesByUrl.get(p.sourceGameUrl);
+      const prov = game && provenanceFrom(game, user);
+      if (!prov) continue;
+      p.provenance = prov;
+      healed.push(p);
+    }
+    if (healed.length > 0) await putPuzzles(db, user, healed);
+
+    if (!engine) return putPuzzlesIfAbsent(db, user, puzzles);
+
     const existing = new Set(stored.map((p) => p.dedupeKey));
     for (const p of puzzles) {
       if (existing.has(p.dedupeKey)) continue;

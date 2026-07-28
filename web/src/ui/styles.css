@@ -716,6 +716,21 @@ body {
   display: none;
 }
 
+/* Where the puzzle came from ("From your game vs opp1 · Rapid · 3 weeks ago") —
+   neutral context, so dim like the move indicator, never the gold assist accent.
+   Collapses for demo/legacy rows and during review (story takes over). */
+.drill__provenance {
+  margin: -6px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+}
+
+.drill__provenance:empty {
+  display: none;
+}
+
 /* Practice rerun after a scored miss — gold "assist" accent (same family as hints)
    signals nothing in this attempt counts. Collapses outside practice mode. */
 .drill__practice-note {
@@ -762,6 +777,34 @@ body {
 
 .drill__review:empty {
   display: none;
+}
+
+/* The full where-this-came-from story, review-only (result + played move). */
+.drill__review-story {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drill__review-context,
+.drill__review-played {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.drill__review-link {
+  align-self: flex-start;
+  font-size: 13px;
+  font-weight: 700;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.drill__review-link:hover {
+  color: var(--text);
 }
 
 .drill__review-nav {

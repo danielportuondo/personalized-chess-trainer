@@ -1,4 +1,4 @@
-import type { RawGame } from "./types";
+import type { Provenance, RawGame } from "./types";
 
 export const BASE_URL = "https://api.chess.com/pub";
 
@@ -17,6 +17,33 @@ export function normalizeResult(
   if (blackResult === "win") return "0-1";
   if (whiteResult && blackResult) return "1/2-1/2";
   return null;
+}
+
+// Which side the user played and against whom, from the player's perspective.
+// White is checked first (mirrors analysis.ts colorOf). Returns undefined —
+// never a partial object — when the user isn't in the game or the opponent's
+// username is missing.
+export function provenanceFrom(game: RawGame, username: string): Provenance | undefined {
+  const u = username.toLowerCase();
+  let playerColor: "white" | "black";
+  let opponent: string | null;
+  if ((game.whiteUsername ?? "").toLowerCase() === u) {
+    playerColor = "white";
+    opponent = game.blackUsername;
+  } else if ((game.blackUsername ?? "").toLowerCase() === u) {
+    playerColor = "black";
+    opponent = game.whiteUsername;
+  } else {
+    return undefined;
+  }
+  if (opponent === null) return undefined;
+
+  let result: Provenance["result"] = null;
+  if (game.result === "1/2-1/2") result = "draw";
+  else if (game.result === "1-0") result = playerColor === "white" ? "win" : "loss";
+  else if (game.result === "0-1") result = playerColor === "black" ? "win" : "loss";
+
+  return { opponent, playerColor, endTime: game.endTime, timeClass: game.timeClass, result };
 }
 
 // Port of ingest.py:parse_games.

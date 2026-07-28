@@ -133,6 +133,23 @@ describe("analyzeAndPersist", () => {
     expect(puzzlesAfterRun1).toHaveLength(2);
     const dedupeKeysAfterRun1 = new Set(puzzlesAfterRun1.map((p) => p.dedupeKey));
 
+    // Fresh rows are born with provenance from the fetched game metadata.
+    const run1ByGame = (url: string) => puzzlesAfterRun1.find((p) => p.sourceGameUrl === url)!;
+    expect(run1ByGame("game-1").provenance).toEqual({
+      opponent: "opp1",
+      playerColor: "black",
+      endTime: 300,
+      timeClass: "rapid",
+      result: "loss",
+    });
+    expect(run1ByGame("game-2").provenance).toEqual({
+      opponent: "opp2",
+      playerColor: "black",
+      endTime: 200,
+      timeClass: "rapid",
+      result: "loss",
+    });
+
     expect(fensSeen).toHaveLength(4); // 2 games x (before, after)
     expect(createEngineFn).toHaveBeenCalledTimes(1);
 
@@ -302,6 +319,83 @@ describe("analyzeAndPersist", () => {
     expect(byFen(RECAPTURE_FEN).ambiguous).toBe(true);
     const byKey = await getReviewByKey(db, "dportuondo");
     expect(byKey[mateKey].reps).toBe(1);
+
+    db.close();
+  });
+
+  it("heals stored puzzles' provenance from the fetched window — engine-free runs included — skipping underivable rows", async () => {
+    const db = await openTrainerDb();
+
+    const legacy = (fen: string, url: string): Puzzle => ({
+      fen,
+      solutionLineUci: "d1d5",
+      playedMoveUci: "a2a3",
+      bestMoveUci: "d1d5",
+      cpl: 500,
+      evalBeforeCp: 100,
+      sourceGameUrl: url,
+      sourcePly: 2,
+      dedupeKey: fen.split(" ").slice(0, 4).join(" "),
+    });
+    const IN_WINDOW_FEN = "6k1/8/4p3/3n4/8/8/8/3R2K1 w - - 0 1";
+    const NO_USER_FEN = "8/8/8/8/8/8/8/K6k w - - 0 1";
+    const OUT_FEN = "7k/8/8/8/8/8/8/K7 w - - 0 1";
+    await putPuzzlesIfAbsent(db, "dportuondo", [
+      legacy(IN_WINDOW_FEN, "game-1"),
+      legacy(NO_USER_FEN, "game-nouser"),
+      legacy(OUT_FEN, "old-game"),
+    ]);
+    const inWindowKey = IN_WINDOW_FEN.split(" ").slice(0, 4).join(" ");
+    await recordResult(db, "dportuondo", inWindowKey, true, "2026-01-01");
+
+    const GAME_NOUSER_PGN = '[White "oppX"]\n[Black "stranger"]\n\n1. e4 e5 *';
+    const gamesRef = {
+      games: [
+        rawGame({ url: "game-1", pgn: GAME1_PGN, end_time: 300, white: { username: "opp1", result: "win" } }),
+        rawGame({
+          url: "game-nouser",
+          pgn: GAME_NOUSER_PGN,
+          end_time: 200,
+          white: { username: "oppX", result: "win" },
+          black: { username: "stranger", result: "resigned" },
+        }),
+      ],
+    };
+    // game-1: dportuondo's 1...e5 at cpl 10 yields no new puzzle; the pending
+    // games exist to prove healing also runs on the engine path. game-nouser
+    // consumes no analyse() calls (analyzeGame bails when the user is absent).
+    const infos: AnalysisInfo[] = [
+      { cp: 10, mate: null, pv: ["e7e5"] },
+      { cp: 0, mate: null, pv: [] },
+    ];
+    const { createEngineFn } = makeEngineFn(infos);
+
+    await analyzeAndPersist("dportuondo", db, { fetchImpl: fakeFetch(gamesRef), createEngineFn });
+
+    let puzzles = await getAllPuzzles(db, "dportuondo");
+    const byFen = (fen: string) => puzzles.find((p) => p.fen === fen)!;
+    expect(byFen(IN_WINDOW_FEN).provenance).toEqual({
+      opponent: "opp1",
+      playerColor: "black",
+      endTime: 300,
+      timeClass: "rapid",
+      result: "loss",
+    });
+    expect(byFen(NO_USER_FEN).provenance).toBeUndefined(); // in window, but the user isn't in the game
+    expect(byFen(OUT_FEN).provenance).toBeUndefined(); // game outside the fetched window
+    const byKey = await getReviewByKey(db, "dportuondo");
+    expect(byKey[inWindowKey].reps).toBe(1); // healing rewrote the row, not its review state
+    expect(createEngineFn).toHaveBeenCalledTimes(1);
+
+    // A provenance-less row appearing later still heals on a NO-PENDING run —
+    // no engine is ever spun up for it.
+    const LATE_FEN = "k7/8/8/8/8/8/8/7K w - - 0 1";
+    await putPuzzlesIfAbsent(db, "dportuondo", [legacy(LATE_FEN, "game-1")]);
+    await analyzeAndPersist("dportuondo", db, { fetchImpl: fakeFetch(gamesRef), createEngineFn });
+
+    puzzles = await getAllPuzzles(db, "dportuondo");
+    expect(byFen(LATE_FEN).provenance?.opponent).toBe("opp1");
+    expect(createEngineFn).toHaveBeenCalledTimes(1); // still 1: healing needed no engine
 
     db.close();
   });

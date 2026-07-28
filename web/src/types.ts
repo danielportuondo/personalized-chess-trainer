@@ -22,6 +22,15 @@ export type Motif =
   | "missed win of material"
   | "other";
 
+// Where a puzzle came from, told from the player's side of the board.
+export interface Provenance {
+  opponent: string;
+  playerColor: "white" | "black";
+  endTime: number | null; // unix seconds (chess.com end_time)
+  timeClass: string | null; // "rapid" | "blitz" | "daily" | ...
+  result: "win" | "loss" | "draw" | null; // the player's result, not the board score
+}
+
 export interface Puzzle {
   fen: string;
   solutionLineUci: string;
@@ -35,6 +44,10 @@ export interface Puzzle {
   // exists, so the puzzle has no unique solution. undefined = never checked
   // (analyzed before the gate existed, or a line curation doesn't serve).
   ambiguous?: boolean;
+  // undefined = minted before provenance existed (healed when the source game
+  // re-enters the fetch window) or the game is outside that window / a demo
+  // fixture (stays absent; UI falls back to the bare game link).
+  provenance?: Provenance;
   sourceGameUrl: string;
   sourcePly: number;
   dedupeKey: string;

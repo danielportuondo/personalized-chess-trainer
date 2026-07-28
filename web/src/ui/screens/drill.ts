@@ -8,11 +8,25 @@ import { getAllPuzzles, getReviewByKey, recordResult, recordProgress } from "../
 import { weaknessSummary, REASON, HINT } from "../../profile";
 import { dueCandidates, selectDuePuzzles } from "../../review";
 import { curatePuzzle, difficultyScore, isDrillable } from "../../curate";
-import { todayIso } from "../../dates";
+import { todayIso, timeAgo, monthYear } from "../../dates";
+import type { Provenance } from "../../types";
 import type { Api } from "chessground/api";
 import type { SummaryParams } from "./summary";
 
 type Outcome = "correct" | "miss" | "skip" | undefined;
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Pre-solve line — neutral by design: the game's result stays out until the
+// review, so a rough session doesn't rub in the losses mid-puzzle.
+function provenanceLine(prov: Provenance, today: string): string {
+  const parts = [`From your game vs ${prov.opponent}`];
+  if (prov.timeClass) parts.push(capitalize(prov.timeClass));
+  if (prov.endTime != null) parts.push(timeAgo(prov.endTime, today));
+  return parts.join(" · ");
+}
 
 function renderLoadError(ctx: AppContext, err: unknown): void {
   const message = err instanceof Error ? err.message : String(err);
@@ -137,6 +151,10 @@ export function renderDrill(ctx: AppContext): void {
           el("span", { text: `${color === "white" ? "White" : "Black"} to move` }),
         );
         const hintTextEl = el("div", { class: "drill__hint" });
+        const provenanceEl = el("p", {
+          class: "drill__provenance",
+          text: pz.provenance ? provenanceLine(pz.provenance, todayIso()) : "",
+        });
         const practiceNoteEl = el("p", { class: "drill__practice-note", text: practice ? "Practice — not scored" : "" });
         const moveIndicatorEl = el("p", { class: "drill__move-indicator" });
         function updateMoveIndicator(): void {
@@ -307,12 +325,52 @@ export function renderDrill(ctx: AppContext): void {
           enterReview(2 * m, true);
         }
 
+        // The full where-this-came-from story — review-only by design (the result
+        // is a spoiler the pre-solve line deliberately withholds). Legacy rows
+        // without provenance degrade to the bare game link; demo rows (fake
+        // demo:// urls) render nothing.
+        function reviewStory(): HTMLElement | null {
+          const link =
+            !ctx.isDemo && pz.sourceGameUrl.startsWith("https://")
+              ? el("a", {
+                  class: "drill__review-link",
+                  text: "View game on Chess.com →",
+                  attrs: { href: pz.sourceGameUrl, target: "_blank", rel: "noopener noreferrer" },
+                })
+              : null;
+          const prov = pz.provenance;
+          if (!prov) return link ? el("div", { class: "drill__review-story" }, link) : null;
+
+          const moveNo = Math.floor(pz.sourcePly / 2) + 1;
+          const gameNoun = prov.timeClass ? `${capitalize(prov.timeClass)} game` : "game";
+          const context = [`Move ${moveNo} of your ${gameNoun} vs ${prov.opponent}`]
+            .concat(prov.endTime != null ? [monthYear(prov.endTime)] : [])
+            .join(" · ");
+          const played = `You played ${uciToSan(pz.fen, pz.playedMoveUci)} here`;
+          const story =
+            prov.result === "loss"
+              ? `${played} and went on to lose.`
+              : prov.result === "win"
+                ? `${played} — and got away with it.`
+                : prov.result === "draw"
+                  ? `${played} and the game ended in a draw.`
+                  : `${played}.`;
+          return el(
+            "div",
+            { class: "drill__review-story" },
+            el("p", { class: "drill__review-context", text: context }),
+            el("p", { class: "drill__review-played", text: story }),
+            link,
+          );
+        }
+
         // Shared post-solve/-miss state: the board is locked and the line can be walked
         // ply by ply with ←/→ (and on-screen ‹/›); Enter or the primary button continues.
         // canRetry (miss only): offers a no-stakes practice rerun of the same puzzle.
         function enterReview(startIdx: number, canRetry: boolean): void {
           turnFlagEl.style.display = "none"; // per-frame side differs from the puzzle's starting side (.turn-flag sets display, so [hidden] won't take)
           moveIndicatorEl.textContent = ""; // superseded by the review caption
+          provenanceEl.textContent = ""; // superseded by the review story
           skipBtn.hidden = true; // meaningless once resolved
 
           let frameIdx = startIdx;
@@ -355,7 +413,9 @@ export function renderDrill(ctx: AppContext): void {
             }
           }
 
+          const story = reviewStory();
           reviewEl.replaceChildren(
+            ...(story ? [story] : []),
             el("div", { class: "drill__review-nav" }, prevBtn, caption, nextBtn),
             el(
               "div",
@@ -458,6 +518,7 @@ export function renderDrill(ctx: AppContext): void {
               el("p", { class: "stat-label", text: `Puzzle ${i + 1} of ${session.length}` }),
               dotsEl,
               turnFlagEl,
+              provenanceEl,
               practiceNoteEl,
               moveIndicatorEl,
               el("div", { class: "drill__hint-row" }, hintBtn),
