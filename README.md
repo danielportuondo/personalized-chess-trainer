@@ -17,7 +17,7 @@ Stockfish reviews your recent Chess.com games, finds the exact moves where you t
 3. **Extract** puzzles from moves that lost ≥ 150 centipawns in positions that were still winnable, deduplicating repeated positions.
 4. **Classify** each mistake into a motif: missed forced mate, allowed forced mate, hanging piece, missed win of material.
 5. **Profile** your weaknesses by motif, game phase, and move number.
-6. **Drill** curated clean tactics — each line trimmed to the moment the payoff (mate or ≥ 2 pawns of material) is on the board, gated on solution uniqueness via a MultiPV=2 re-check, served easiest-first, and scheduled with SM-2 spaced repetition.
+6. **Drill** curated clean tactics — each line trimmed to the moment the payoff (mate or ≥ 2 pawns of material) is on the board, gated on solution uniqueness via a MultiPV=2 re-check of only the puzzles curation will actually serve — positions with two mating moves pass, and the drill accepts any immediate mate — served easiest-first, and scheduled with SM-2 spaced repetition.
 
 The thresholds aren't guesses: [docs/evaluation.md](docs/evaluation.md) validates the CPL cutoff, the uniqueness gap, and the difficulty ordering against a database of my own analyzed games.
 
@@ -56,7 +56,7 @@ uv run chess-trainer train      # drill puzzles in the terminal
 
 ## Tests
 
-CI runs both suites on every push: **232 vitest** tests for the web app and **22 pytest** tests for the CLI, plus `tsc`, a production build, and `ruff`.
+CI runs both suites on every push: **237 vitest** tests for the web app and **22 pytest** tests for the CLI, plus `tsc`, a production build, and `ruff`.
 
 ```sh
 cd web && npm test    # vitest
@@ -69,4 +69,4 @@ Every commit in this repo is co-authored with Claude, and I'd rather own that th
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The data sources, libraries, conventions, and tooling the trainer builds on are credited in [REFERENCES.md](REFERENCES.md).

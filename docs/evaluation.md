@@ -15,7 +15,7 @@ uv run python analysis/evaluate_thresholds.py     # ~4.5 min, mostly the Stockfi
 | Threshold | Where | Verdict | Key evidence |
 |---|---|---|---|
 | `CPL_THRESHOLD = 150` | `extract.py` / `extract.ts` | **Keep** | Sits at p87 of the move-loss distribution; lowering to 100 mostly adds low-teachability "other" mistakes |
-| `UNIQUE_GAP_CP = 100` | `pipeline.ts` | **Lower to 50** (and gate after curation) | Flags 63.7% of all puzzles and 30.5% of drillable ones; 50cp keeps genuinely dual-solution filtering while saving ~44% of rejected drills |
+| `UNIQUE_GAP_CP = 100` | `pipeline.ts` | **Lower to 50** (and gate after curation) — *implemented in `a388003`* | Flags 63.7% of all puzzles and 30.5% of drillable ones; 50cp keeps genuinely dual-solution filtering while saving ~44% of rejected drills |
 | Curation gates + `difficultyScore` | `curate.ts` | **Keep** | Gates concentrate exactly on tactics (86% of missed mates pass, 4% of "other"); ordering is monotone easy-to-hard |
 
 ---
@@ -89,6 +89,11 @@ dedupe):
 and the tactical-purity concern is better solved by curation than by the threshold.
 
 ## 4. `UNIQUE_GAP_CP = 100` — lower to 50, and check uniqueness after curation
+
+*Implemented in `a388003` (2026-07-20): `UNIQUE_GAP_CP` is now 50, uniqueness is
+checked only for puzzles that survive curation, dual-mate positions are exempt (the
+drill accepts any immediate mate), and stored verdicts flagged under the old rules
+are re-checked on the next engine run.*
 
 MultiPV=2 depth-12 gap (best minus second-best move, cp, side-to-move POV) over the
 3,000-puzzle sample (1 position had a single legal reply and can never be flagged):
