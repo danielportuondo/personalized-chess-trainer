@@ -34,8 +34,9 @@ export function legalDests(fen: string): Map<SquareName, SquareName[]> {
 
 // Builds the UCI move string for a drag-drop (orig, dest) pair. Auto-queen only: if the
 // moved piece is a pawn landing on the back rank (rank "8" or "1"), the promotion suffix
-// is always "q" — underpromotion is not supported, so underpromotion puzzles simply score
-// as a miss (the played UCI won't match the puzzle's expected best move).
+// is always "q" — underpromotion is not supported. Lines requiring one are excluded from
+// drills at curation (curate.ts), and the drill accepts promotion-piece variants via
+// isPromotionVariant below as the safety net for un-curated data.
 export function moveToUci(fen: string, orig: string, dest: string): string {
   const pos = position(fen);
   const movedPiece = pos.board.get(parseSquare(orig as SquareName));
@@ -108,6 +109,17 @@ export function planSolutionLine(
   if (last) last.reply = undefined;
 
   return { moves };
+}
+
+// True iff both UCIs promote the same pawn move (same from/to squares), whatever the
+// chosen piece. The board auto-queens (moveToUci above) and an engine PV's promotion
+// piece can be tie-break noise between near-equal choices, so drills accept any
+// promotion where the expected move is itself a promotion on the same squares.
+export function isPromotionVariant(playedUci: string, expectedUci: string): boolean {
+  const isPromo = (uci: string) => uci.length === 5 && "qrbn".includes(uci[4]);
+  return (
+    isPromo(playedUci) && isPromo(expectedUci) && playedUci.slice(0, 4) === expectedUci.slice(0, 4)
+  );
 }
 
 // True iff playing `uci` from `fen` delivers immediate checkmate. Drills accept

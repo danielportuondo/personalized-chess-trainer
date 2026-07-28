@@ -10,6 +10,7 @@
 // is excluded from drills but still counts in the weakness profile.
 import { Chess } from "chessops/chess";
 import { parseFen } from "chessops/fen";
+import { isNormal } from "chessops/types";
 import { opposite, parseUci } from "chessops/util";
 import { material } from "./profile";
 import type { Puzzle } from "./types";
@@ -55,6 +56,10 @@ export function curateLine(fen: string, solutionLineUci: string): CuratedLine | 
   for (let k = 0; 2 * k < tokens.length && k < MATE_MOVE_CAP; k++) {
     const userMove = parseUci(tokens[2 * k]);
     if (!userMove || !pos.isLegal(userMove)) return null;
+    // The board UI can only auto-queen (ui/board-logic.ts moveToUci), so a line that
+    // requires an underpromotion is unplayable — never drillable. Drill-time
+    // promotion-variant acceptance is the safety net; this removes it at the source.
+    if (isNormal(userMove) && userMove.promotion && userMove.promotion !== "queen") return null;
     const oppMaterialBefore = material(pos.board, opponent);
     pos.play(userMove);
     const captured = material(pos.board, opponent) < oppMaterialBefore;

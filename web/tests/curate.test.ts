@@ -18,6 +18,10 @@ const LATE_GAIN_FEN = "1n4k1/7p/8/8/8/8/8/R5K1 w - - 0 1";
 const LADDER_4_FEN = "8/8/8/4k3/R7/1R6/8/6K1 w - - 0 1";
 // Same ladder one rank further out: mate on user move 5 (past MATE_MOVE_CAP).
 const LADDER_5_FEN = "8/8/8/8/4k3/R7/1R6/6K1 w - - 0 1";
+// Real stored puzzle (vs izhakbitti, Jul 2026): 1...c2 2.Bd2 cxd1=R+ banks the queen —
+// but the board UI auto-queens, so the rook underpromotion at token 2 is unplayable.
+const UNDERPROMO_FEN = "rnbqk2r/pp3p1p/4pp2/3p4/1bP5/1Pp5/P4PPP/R1BQKBNR b KQkq - 0 9";
+const UNDERPROMO_LINE = "c3c2 c1d2 c2d1r a1d1 b4d2 d1d2 d8a5 c4d5 e6d5 g1e2 b8c6 e2c3 a5c3";
 
 function makePuzzle(overrides: Partial<Puzzle> = {}): Puzzle {
   return {
@@ -85,6 +89,21 @@ describe("curateLine", () => {
     expect(
       curateLine(LADDER_5_FEN, "a3a4 e4e5 b2b5 e5e6 a4a6 e6e7 b5b7 e7e8 a6a8"),
     ).toBeNull();
+  });
+
+  it("rejects a line that requires an underpromotion from the user", () => {
+    expect(curateLine(UNDERPROMO_FEN, UNDERPROMO_LINE)).toBeNull();
+  });
+
+  it("keeps the same line drillable when the promotion is to a queen", () => {
+    const c = curateLine(UNDERPROMO_FEN, "c3c2 c1d2 c2d1q a1d1 b4d2 d1d2");
+    expect(c).toMatchObject({ lineUci: "c3c2 c1d2 c2d1q", userMoves: 2, goal: "material" });
+  });
+
+  it("ignores an underpromotion sitting past the payoff cut", () => {
+    // The queen is banked at user move 2, so token index 4 is never examined.
+    const c = curateLine(UNDERPROMO_FEN, "c3c2 c1d2 c2d1q a1d1 a7a8n");
+    expect(c).toMatchObject({ lineUci: "c3c2 c1d2 c2d1q", userMoves: 2 });
   });
 
   it("survives malformed tails and empty lines without throwing", () => {

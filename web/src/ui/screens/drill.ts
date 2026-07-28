@@ -1,7 +1,7 @@
 import type { AppContext } from "../app";
 import { el, mount } from "../dom";
 import { mountPuzzleBoard, lockBoard, playOpponentReply, armForMove, showFrame } from "../board";
-import { turnColorOf, moveToUci, planSolutionLine, buildReviewFrames, uciToSan, deliversMate, applyUci } from "../board-logic";
+import { turnColorOf, moveToUci, planSolutionLine, buildReviewFrames, uciToSan, deliversMate, isPromotionVariant, applyUci } from "../board-logic";
 import type { UserMoveStep } from "../board-logic";
 import { celebratePop, elementOrigin } from "../celebrate";
 import { getAllPuzzles, getReviewByKey, recordResult, recordProgress } from "../../db";
@@ -453,8 +453,12 @@ export function renderDrill(ctx: AppContext): void {
           // An off-line move that mates on the spot still solves the puzzle
           // (lichess convention) — and ends it, checkmate leaves no reply.
           const altMate = playedUci !== step.expectedUci && deliversMate(step.fenBefore, playedUci);
-          const passed = playedUci === step.expectedUci || altMate;
-          const isFinal = m === moves.length - 1 || altMate;
+          // Same promotion, different piece (the board can only auto-queen): counts as
+          // solved, and ends the puzzle — the board has diverged from the scripted line.
+          const promoVariant =
+            playedUci !== step.expectedUci && isPromotionVariant(playedUci, step.expectedUci);
+          const passed = playedUci === step.expectedUci || altMate || promoVariant;
+          const isFinal = m === moves.length - 1 || altMate || promoVariant;
 
           if (!passed) {
             lockBoard(api);
@@ -466,8 +470,8 @@ export function renderDrill(ctx: AppContext): void {
           }
 
           if (isFinal) {
-            if (altMate) {
-              // Review shows the mate the user actually played, not the stored
+            if (altMate || promoVariant) {
+              // Review shows the move the user actually played, not the stored
               // PV's divergent tail. frames[2m] is the position they faced.
               frames = [
                 ...frames.slice(0, 2 * m + 1),

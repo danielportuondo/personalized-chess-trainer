@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { turnColorOf, legalDests, moveToUci, applyUci, planSolutionLine, buildReviewFrames, uciToSan, deliversMate } from "../src/ui/board-logic";
+import { turnColorOf, legalDests, moveToUci, applyUci, planSolutionLine, buildReviewFrames, uciToSan, deliversMate, isPromotionVariant } from "../src/ui/board-logic";
 
 const STARTPOS = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const BLACK_TO_MOVE = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1";
@@ -183,5 +183,27 @@ describe("deliversMate", () => {
   it("false for illegal or unparseable input", () => {
     expect(deliversMate(SCHOLARS_FEN, "a1a8")).toBe(false);
     expect(deliversMate(SCHOLARS_FEN, "zzzz")).toBe(false);
+  });
+});
+
+describe("isPromotionVariant", () => {
+  it("true for a different promotion piece on the same squares", () => {
+    expect(isPromotionVariant("c2d1q", "c2d1r")).toBe(true);
+    expect(isPromotionVariant("c2d1q", "c2d1n")).toBe(true);
+  });
+
+  it("true for the identical promotion (callers gate on inequality)", () => {
+    expect(isPromotionVariant("c2d1q", "c2d1q")).toBe(true);
+  });
+
+  it("false when the squares differ", () => {
+    expect(isPromotionVariant("c2d1q", "c2e1r")).toBe(false);
+    expect(isPromotionVariant("b2b1q", "c2d1r")).toBe(false);
+  });
+
+  it("false when either move is not a promotion", () => {
+    expect(isPromotionVariant("e2e4", "e7e5")).toBe(false);
+    expect(isPromotionVariant("c2d1q", "c2d1")).toBe(false);
+    expect(isPromotionVariant("c2d1", "c2d1r")).toBe(false);
   });
 });
