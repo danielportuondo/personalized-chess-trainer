@@ -90,7 +90,9 @@ export async function bootApp(): Promise<void> {
     async enterDemo() {
       await seedDemo(db);
       username = DEMO_USERNAME; // ephemeral — deliberately not persisted
-      ctx.navigate("profile");
+      // Straight into a puzzle — the drill self-loads from the seeded data and
+      // bounces to the profile itself if nothing is due (repeat visit today).
+      ctx.navigate("drill");
     },
   };
 
