@@ -305,4 +305,42 @@ describe("analyzeAndPersist", () => {
 
     db.close();
   });
+
+  // The UI defers persisting the handle until analyzeAndPersist settles, so these
+  // two contracts are what keep a failed/empty lookup from minting a ghost profile.
+  it("rejects on an unknown user before touching IndexedDB", async () => {
+    const db = await openTrainerDb();
+    const fetchImpl = vi.fn(async () => fakeResponse(404, {})) as unknown as typeof fetch;
+    const { createEngineFn } = makeEngineFn([]);
+
+    await expect(analyzeAndPersist("xzxzxz-not-a-user-99", db, { fetchImpl, createEngineFn })).rejects.toThrow(
+      "Chess.com user not found: xzxzxz-not-a-user-99"
+    );
+
+    expect(createEngineFn).not.toHaveBeenCalled();
+    expect(await getAnalyzedGameUrls(db, "xzxzxz-not-a-user-99")).toEqual(new Set());
+    expect(await getAllPuzzles(db, "xzxzxz-not-a-user-99")).toHaveLength(0);
+
+    db.close();
+  });
+
+  it("resolves {newGames: 0, newPuzzles: 0} for a real user with no archives, persisting nothing", async () => {
+    const db = await openTrainerDb();
+    const fetchImpl = vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (url === ARCHIVES_URL) return fakeResponse(200, { archives: [] });
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as unknown as typeof fetch;
+    const { createEngineFn } = makeEngineFn([]);
+
+    const res = await analyzeAndPersist("dportuondo", db, { fetchImpl, createEngineFn });
+
+    expect(res.newGames).toBe(0);
+    expect(res.newPuzzles).toBe(0);
+    expect(createEngineFn).not.toHaveBeenCalled();
+    expect(await getAnalyzedGameUrls(db, "dportuondo")).toEqual(new Set());
+    expect(await getAllPuzzles(db, "dportuondo")).toHaveLength(0);
+
+    db.close();
+  });
 });
