@@ -1,11 +1,14 @@
 import "fake-indexeddb/auto";
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { INITIAL_FEN } from "chessops/fen";
 import { analyzeAndPersist } from "../src/pipeline";
 import {
   openTrainerDb,
   DB_NAME,
   getAnalyzedGameUrls,
   getAllPuzzles,
+  putAnalysis,
+  putPuzzles,
   putPuzzlesIfAbsent,
   getReviewByKey,
   recordResult,
@@ -13,7 +16,14 @@ import {
 import { BASE_URL } from "../src/chesscom";
 import type { AnalysisInfo, AnalyseFn } from "../src/analysis";
 import type { createEngine, Engine, Top2 } from "../src/engine";
-import type { Puzzle } from "../src/types";
+import type { Provenance, Puzzle } from "../src/types";
+
+// putPuzzles is the healing write path; wrapping it (behavior unchanged) lets
+// the intro tests assert that underivable/unchanged rows produce ZERO writes.
+vi.mock("../src/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/db")>();
+  return { ...actual, putPuzzles: vi.fn(actual.putPuzzles) };
+});
 
 afterEach(async () => {
   await indexedDB.deleteDatabase(DB_NAME);
@@ -396,6 +406,151 @@ describe("analyzeAndPersist", () => {
     puzzles = await getAllPuzzles(db, "dportuondo");
     expect(byFen(LATE_FEN).provenance?.opponent).toBe("opp1");
     expect(createEngineFn).toHaveBeenCalledTimes(1); // still 1: healing needed no engine
+
+    db.close();
+  });
+
+  // Intro fixtures: GAME1_PGN is '1. e4 e5 *', so a sourcePly-2 row's intro is
+  // Black's 1...e5 played from the position after 1. e4.
+  const AFTER_E4_FEN = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1";
+  const GAME1_PROVENANCE: Provenance = {
+    opponent: "opp1",
+    playerColor: "black",
+    endTime: 300,
+    timeClass: "rapid",
+    result: "loss",
+  };
+
+  const introLegacy = (fen: string, overrides: Partial<Puzzle> = {}): Puzzle => ({
+    fen,
+    solutionLineUci: "d1d5",
+    playedMoveUci: "a2a3",
+    bestMoveUci: "d1d5",
+    cpl: 500,
+    evalBeforeCp: 100,
+    sourceGameUrl: "game-1",
+    sourcePly: 2,
+    dedupeKey: fen.split(" ").slice(0, 4).join(" "),
+    ...overrides,
+  });
+
+  const game1Window = () => ({
+    games: [rawGame({ url: "game-1", pgn: GAME1_PGN, end_time: 300, white: { username: "opp1", result: "win" } })],
+  });
+
+  it("mints fresh puzzles with an intro derived from the source PGN at sourcePly", async () => {
+    const db = await openTrainerDb();
+
+    // dportuondo (Black) blunders 1...e5 at ply 1; the intro is White's 1. e4.
+    const infos: AnalysisInfo[] = [
+      { cp: 10, mate: null, pv: ["e7e5"] },
+      { cp: 800, mate: null, pv: [] },
+    ];
+    const { createEngineFn } = makeEngineFn(infos);
+
+    await analyzeAndPersist("dportuondo", db, { fetchImpl: fakeFetch(game1Window()), createEngineFn });
+
+    const [puzzle] = await getAllPuzzles(db, "dportuondo");
+    expect(puzzle.sourcePly).toBe(1);
+    expect(puzzle.intro).toEqual({ uci: "e2e4", fenBefore: INITIAL_FEN });
+
+    db.close();
+  });
+
+  it("heals stored puzzles' intro on an engine-free no-pending run, preserving review state", async () => {
+    const db = await openTrainerDb();
+    // game-1 pre-marked analyzed: the run has no pending work, so no engine may spin up.
+    await putAnalysis(db, "dportuondo", "game-1", []);
+
+    const legacy = introLegacy("6k1/8/4p3/3n4/8/8/8/3R2K1 w - - 0 1");
+    await putPuzzlesIfAbsent(db, "dportuondo", [legacy]);
+    await recordResult(db, "dportuondo", legacy.dedupeKey, true, "2026-01-01");
+    const { createEngineFn } = makeEngineFn([]);
+
+    await analyzeAndPersist("dportuondo", db, { fetchImpl: fakeFetch(game1Window()), createEngineFn });
+
+    const [puzzle] = await getAllPuzzles(db, "dportuondo");
+    expect(puzzle.intro).toEqual({ uci: "e7e5", fenBefore: AFTER_E4_FEN });
+    expect(createEngineFn).not.toHaveBeenCalled();
+    const byKey = await getReviewByKey(db, "dportuondo");
+    expect(byKey[legacy.dedupeKey].reps).toBe(1); // healing rewrote the row, not its review state
+
+    db.close();
+  });
+
+  it("never rewrites rows whose intro is underivable (sourcePly 0, out-of-window) across repeat runs", async () => {
+    const db = await openTrainerDb();
+    await putAnalysis(db, "dportuondo", "game-1", []);
+
+    const PLY0_FEN = "6k1/8/4p3/3n4/8/8/8/3R2K1 w - - 0 1";
+    const OUT_FEN = "7k/8/8/8/8/8/8/K7 w - - 0 1";
+    // provenance pre-filled so the intro is the only healable gap on both rows
+    await putPuzzlesIfAbsent(db, "dportuondo", [
+      introLegacy(PLY0_FEN, { sourcePly: 0, provenance: GAME1_PROVENANCE }),
+      introLegacy(OUT_FEN, { sourceGameUrl: "old-game", provenance: GAME1_PROVENANCE }),
+    ]);
+    const { createEngineFn } = makeEngineFn([]);
+    const fetchImpl = fakeFetch(game1Window());
+
+    vi.mocked(putPuzzles).mockClear();
+    await analyzeAndPersist("dportuondo", db, { fetchImpl, createEngineFn });
+    await analyzeAndPersist("dportuondo", db, { fetchImpl, createEngineFn });
+
+    const puzzles = await getAllPuzzles(db, "dportuondo");
+    const byFen = (fen: string) => puzzles.find((p) => p.fen === fen)!;
+    expect(byFen(PLY0_FEN).intro).toBeUndefined(); // sourcePly 0: no preceding move
+    expect(byFen(OUT_FEN).intro).toBeUndefined(); // game outside the fetched window
+    expect(putPuzzles).not.toHaveBeenCalled(); // zero heal writes on either run
+    expect(createEngineFn).not.toHaveBeenCalled();
+
+    db.close();
+  });
+
+  it("leaves an already-present intro un-overwritten", async () => {
+    const db = await openTrainerDb();
+    await putAnalysis(db, "dportuondo", "game-1", []);
+
+    const sentinel = { uci: "a7a5", fenBefore: "sentinel-fen" };
+    const row = introLegacy("6k1/8/4p3/3n4/8/8/8/3R2K1 w - - 0 1", {
+      provenance: GAME1_PROVENANCE,
+      intro: sentinel,
+    });
+    await putPuzzlesIfAbsent(db, "dportuondo", [row]);
+    const { createEngineFn } = makeEngineFn([]);
+
+    vi.mocked(putPuzzles).mockClear();
+    await analyzeAndPersist("dportuondo", db, { fetchImpl: fakeFetch(game1Window()), createEngineFn });
+
+    const [puzzle] = await getAllPuzzles(db, "dportuondo");
+    expect(puzzle.intro).toEqual(sentinel);
+    expect(putPuzzles).not.toHaveBeenCalled(); // nothing changed -> no write
+
+    db.close();
+  });
+
+  it("heals only the missing field on mixed rows: provenance-only gains intro, intro-only gains provenance", async () => {
+    const db = await openTrainerDb();
+    await putAnalysis(db, "dportuondo", "game-1", []);
+
+    const PROV_ONLY_FEN = "6k1/8/4p3/3n4/8/8/8/3R2K1 w - - 0 1";
+    const INTRO_ONLY_FEN = "7k/8/8/8/8/8/8/K7 w - - 0 1";
+    const sentinel = { uci: "a7a5", fenBefore: "sentinel-fen" };
+    await putPuzzlesIfAbsent(db, "dportuondo", [
+      introLegacy(PROV_ONLY_FEN, { provenance: GAME1_PROVENANCE }),
+      introLegacy(INTRO_ONLY_FEN, { intro: sentinel }),
+    ]);
+    const { createEngineFn } = makeEngineFn([]);
+
+    vi.mocked(putPuzzles).mockClear();
+    await analyzeAndPersist("dportuondo", db, { fetchImpl: fakeFetch(game1Window()), createEngineFn });
+
+    const puzzles = await getAllPuzzles(db, "dportuondo");
+    const byFen = (fen: string) => puzzles.find((p) => p.fen === fen)!;
+    expect(byFen(PROV_ONLY_FEN).intro).toEqual({ uci: "e7e5", fenBefore: AFTER_E4_FEN });
+    expect(byFen(PROV_ONLY_FEN).provenance).toEqual(GAME1_PROVENANCE);
+    expect(byFen(INTRO_ONLY_FEN).provenance).toEqual(GAME1_PROVENANCE);
+    expect(byFen(INTRO_ONLY_FEN).intro).toEqual(sentinel);
+    expect(putPuzzles).toHaveBeenCalledTimes(1); // both rows healed in the single write
 
     db.close();
   });

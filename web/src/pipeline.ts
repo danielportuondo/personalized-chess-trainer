@@ -6,6 +6,7 @@ import type { IDBPDatabase } from "idb";
 import type { MoveEval, Puzzle, WeaknessSummary } from "./types";
 import { fetchRecentGames, provenanceFrom } from "./chesscom";
 import { analyzeGame, mateScore } from "./analysis";
+import { introFrom } from "./intro";
 import { createEngine, type Engine } from "./engine";
 import { extractPuzzles } from "./extract";
 import { tagMotifs, weaknessSummary } from "./profile";
@@ -126,22 +127,37 @@ export async function analyzeAndPersist(
       const game = gamesByUrl.get(p.sourceGameUrl);
       const prov = game && provenanceFrom(game, user);
       if (prov) p.provenance = prov;
+      const intro = game && introFrom(game.pgn, p.sourcePly);
+      if (intro) p.intro = intro;
     }
 
     const stored = await getAllPuzzles(db, user);
 
-    // Heal provenance on rows minted before the field existed, whenever their
-    // source game re-enters the fetch window. Needs no engine, so it runs on
-    // no-pending runs too. Only rows where a value is actually derivable are
-    // written — underivable ones would otherwise be rewritten every run.
+    // Heal provenance and intro on rows minted before those fields existed,
+    // whenever their source game re-enters the fetch window. Needs no engine,
+    // so it runs on no-pending runs too. Only rows where a missing value is
+    // actually derivable are written — underivable ones would otherwise be
+    // rewritten every run.
     const healed: Puzzle[] = [];
     for (const p of stored) {
-      if (p.provenance) continue;
       const game = gamesByUrl.get(p.sourceGameUrl);
-      const prov = game && provenanceFrom(game, user);
-      if (!prov) continue;
-      p.provenance = prov;
-      healed.push(p);
+      if (!game) continue;
+      let changed = false;
+      if (!p.provenance) {
+        const prov = provenanceFrom(game, user);
+        if (prov) {
+          p.provenance = prov;
+          changed = true;
+        }
+      }
+      if (!p.intro) {
+        const intro = introFrom(game.pgn, p.sourcePly);
+        if (intro) {
+          p.intro = intro;
+          changed = true;
+        }
+      }
+      if (changed) healed.push(p);
     }
     if (healed.length > 0) await putPuzzles(db, user, healed);
 

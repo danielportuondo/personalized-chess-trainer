@@ -31,6 +31,13 @@ export interface Provenance {
   result: "win" | "loss" | "draw" | null; // the player's result, not the board score
 }
 
+// The opponent's move that led into a puzzle, so the drill can play it before
+// arming input.
+export interface PuzzleIntro {
+  uci: string; // the opponent's move (normalized castling UCI)
+  fenBefore: string; // position before that move; playing uci from here yields pz.fen
+}
+
 export interface Puzzle {
   fen: string;
   solutionLineUci: string;
@@ -48,6 +55,11 @@ export interface Puzzle {
   // re-enters the fetch window) or the game is outside that window / a demo
   // fixture (stays absent; UI falls back to the bare game link).
   provenance?: Provenance;
+  // undefined = minted before intros existed (healed when the source game
+  // re-enters the fetch window), sourcePly 0 (no preceding move), or the game
+  // is outside that window / a demo fixture (stays absent; the drill skips
+  // the intro).
+  intro?: PuzzleIntro;
   sourceGameUrl: string;
   sourcePly: number;
   dedupeKey: string;

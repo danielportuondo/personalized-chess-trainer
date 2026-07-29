@@ -63,7 +63,8 @@ function colorOf(headers: Map<string, string>, username: string): Color | null {
 // game walk (pos.play(move)) keeps using the original chessops move unchanged.
 // Detect castling as king-to-same-color-rook (board state is pre-move here): a king
 // capturing an ENEMY rook has an opposite-color piece on `to` and must NOT normalize.
-function playedUci(board: Board, move: Move, player: Color): string {
+// Exported for intro.ts, which reuses this normalization for the opponent's move.
+export function playedUci(board: Board, move: Move, player: Color): string {
   if (isNormal(move)) {
     const movedPiece = board.get(move.from);
     const targetPiece = board.get(move.to);
