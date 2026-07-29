@@ -19,6 +19,7 @@ import { getAllPuzzles, getReviewByKey, recordResult, recordProgress } from "../
 import { refuteWrongMove } from "../refute";
 import { weaknessSummary, REASON, HINT } from "../../profile";
 import { dueCandidates, selectDuePuzzles } from "../../review";
+import { gameUrlAtPly } from "../../chesscom";
 import { curatePuzzle, difficultyScore, isDrillable } from "../../curate";
 import { todayIso, timeAgo, monthYear } from "../../dates";
 import type { Provenance } from "../../types";
@@ -447,7 +448,13 @@ export function renderDrill(ctx: AppContext): void {
               ? el("a", {
                   class: "drill__review-link",
                   text: "View game on Chess.com →",
-                  attrs: { href: pz.sourceGameUrl, target: "_blank", rel: "noopener noreferrer" },
+                  attrs: {
+                    // Deep-link to the puzzle position (the ply *before* the
+                    // played move) so the viewer mirrors the drill board.
+                    href: gameUrlAtPly(pz.sourceGameUrl, pz.sourcePly),
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                  },
                 })
               : null;
           const prov = pz.provenance;

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { fetchArchives, parseGames, fetchRecentGames, normalizeResult, provenanceFrom, BASE_URL } from "../src/chesscom";
+import { fetchArchives, parseGames, fetchRecentGames, normalizeResult, provenanceFrom, gameUrlAtPly, BASE_URL } from "../src/chesscom";
 
 // Minimal fake matching the Response surface chesscom.ts actually reads:
 // ok, status, json(), headers.get(name). Nothing richer.
@@ -285,5 +285,25 @@ describe("fetchRecentGames 429 retry", () => {
     });
     expect(games.map((g) => g.url)).toEqual(["retried-game"]);
     expect(janCalls).toBe(2);
+  });
+});
+
+describe("gameUrlAtPly", () => {
+  it("appends ?move=<ply> so the viewer opens at the puzzle position", () => {
+    expect(gameUrlAtPly("https://www.chess.com/game/live/172219973248", 10)).toBe(
+      "https://www.chess.com/game/live/172219973248?move=10"
+    );
+  });
+
+  it("returns the URL unchanged for ply 0 (game start is the puzzle position)", () => {
+    expect(gameUrlAtPly("https://www.chess.com/game/live/172219973248", 0)).toBe(
+      "https://www.chess.com/game/live/172219973248"
+    );
+  });
+
+  it("preserves an existing query string", () => {
+    expect(gameUrlAtPly("https://www.chess.com/game/live/1?username=bob", 7)).toBe(
+      "https://www.chess.com/game/live/1?username=bob&move=7"
+    );
   });
 });

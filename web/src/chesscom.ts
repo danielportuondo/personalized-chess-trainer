@@ -8,6 +8,16 @@ function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Chess.com's game viewer opens at the position after N half-moves via
+// ?move=N (1-indexed; verified live 2026-07-28). Ply 0 needs no param — the
+// viewer already opens at the start position.
+export function gameUrlAtPly(url: string, ply: number): string {
+  if (ply <= 0) return url;
+  const u = new URL(url);
+  u.searchParams.set("move", String(ply));
+  return u.toString();
+}
+
 // Port of ingest.py:_normalize_result.
 export function normalizeResult(
   whiteResult: string | null | undefined,
