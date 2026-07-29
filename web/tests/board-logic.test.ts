@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { turnColorOf, legalDests, moveToUci, applyUci, planSolutionLine, buildReviewFrames, uciToSan, deliversMate, isPromotionVariant } from "../src/ui/board-logic";
+import { turnColorOf, legalDests, moveToUci, applyUci, planSolutionLine, buildReviewFrames, uciToSan, deliversMate, isPromotionVariant, classifySan } from "../src/ui/board-logic";
 
 const STARTPOS = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const BLACK_TO_MOVE = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1";
@@ -113,7 +113,7 @@ describe("buildReviewFrames", () => {
     const { moves } = planSolutionLine(mate, "h5f7");
     const frames = buildReviewFrames(moves);
     expect(frames).toHaveLength(2);
-    expect(frames[0]).toEqual({ fen: mate, lastMove: null, label: "Start" });
+    expect(frames[0]).toEqual({ fen: mate, lastMove: null, label: "Start", san: null });
     expect(frames[1].fen).toBe(applyUci(mate, "h5f7"));
     expect(frames[1].lastMove).toEqual(["h5", "f7"]);
     expect(frames[1].label).toBe("White: Qxf7#");
@@ -133,6 +133,12 @@ describe("buildReviewFrames", () => {
     expect(frames[2].fen).toBe(moves[1].fenBefore);
     expect(frames[3].fen).toBe(applyUci(moves[1].fenBefore, "d6c8"));
     expect(frames[3].lastMove).toEqual(["d6", "c8"]);
+  });
+
+  it("carries each frame's SAN (null on Start) so sounds can classify without re-parsing", () => {
+    const { moves } = planSolutionLine(FORK_FEN, "c4d6 e8e7 d6c8");
+    const frames = buildReviewFrames(moves);
+    expect(frames.map((f) => f.san)).toEqual([null, "Nd6+", "Ke7", "Nxc8+"]);
   });
 
   it("a 3-move line yields 6 frames (2L) with the before-ply-m invariant at index 2m", () => {
@@ -165,6 +171,46 @@ describe("uciToSan", () => {
 
   it("falls back to the raw token when illegal", () => {
     expect(uciToSan(STARTPOS, "a1a8")).toBe("a1a8");
+  });
+});
+
+describe("classifySan", () => {
+  it("classifies plain moves", () => {
+    expect(classifySan("e4")).toBe("move");
+    expect(classifySan("Nf3")).toBe("move");
+    expect(classifySan("Ke7")).toBe("move");
+  });
+
+  it("classifies captures", () => {
+    expect(classifySan("exd5")).toBe("capture");
+    expect(classifySan("Qxf7")).toBe("capture");
+  });
+
+  it("classifies castling on both wings", () => {
+    expect(classifySan("O-O")).toBe("castle");
+    expect(classifySan("O-O-O")).toBe("castle");
+  });
+
+  it("classifies promotion", () => {
+    expect(classifySan("e8=Q")).toBe("promote");
+    expect(classifySan("axb8=N")).toBe("promote");
+  });
+
+  it("check outranks capture, promotion, and castling", () => {
+    expect(classifySan("Qh5+")).toBe("check");
+    expect(classifySan("Nxf7+")).toBe("check");
+    expect(classifySan("exd8=Q+")).toBe("check");
+    expect(classifySan("O-O+")).toBe("check");
+  });
+
+  it("mate outranks everything", () => {
+    expect(classifySan("Qxf7#")).toBe("checkmate");
+    expect(classifySan("e8=Q#")).toBe("checkmate");
+    expect(classifySan("O-O-O#")).toBe("checkmate");
+  });
+
+  it("degrades a raw-UCI fallback token to a plain move", () => {
+    expect(classifySan("h5f7")).toBe("move");
   });
 });
 

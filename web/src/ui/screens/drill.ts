@@ -15,6 +15,7 @@ import {
 import { turnColorOf, moveToUci, planSolutionLine, buildReviewFrames, uciToSan, deliversMate, isPromotionVariant, applyUci } from "../board-logic";
 import type { UserMoveStep } from "../board-logic";
 import { celebratePop, elementOrigin } from "../celebrate";
+import { isSoundEnabled, playSound, setSoundEnabled, soundForMove } from "../sound";
 import { getAllPuzzles, getReviewByKey, recordResult, recordProgress } from "../../db";
 import { refuteWrongMove } from "../refute";
 import { weaknessSummary, REASON, HINT } from "../../profile";
@@ -152,6 +153,14 @@ export function renderDrill(ctx: AppContext): void {
         let frames = buildReviewFrames(moves);
         let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
+        // Sounds a frame's own move when review/autoplay lands on it. Frame
+        // parity: odd indices are the solver's moves, even (>0) the opponent's
+        // replies; the Start frame has no san and stays silent.
+        function playFrameSound(idx: number): void {
+          const san = frames[idx].san;
+          if (san) playSound(soundForMove(san, idx % 2 === 1 ? "self" : "opponent"));
+        }
+
         const boardEl = el("div", { class: "board" });
         const scoreEl = el("p", { class: "muted notation", text: `✓ ${correct} / ${attempted}` });
         const streakEl = el("span", { class: "badge badge--flame", text: `🔥 ${run}` });
@@ -284,6 +293,24 @@ export function renderDrill(ctx: AppContext): void {
           },
         });
 
+        // Persistent mute toggle (localStorage-backed; sound.ts gates playback,
+        // this button only reflects/flips the pref). Stateful-button idiom like
+        // skipBtn — the repo has no checkbox component.
+        const soundBtn = el("button", {
+          class: "btn btn--ghost",
+          onClick: () => {
+            setSoundEnabled(!isSoundEnabled());
+            refreshSoundBtn();
+          },
+        });
+        function refreshSoundBtn(): void {
+          const on = isSoundEnabled();
+          soundBtn.textContent = on ? "🔊 Sound" : "🔇 Muted";
+          soundBtn.setAttribute("aria-pressed", String(on));
+          soundBtn.setAttribute("aria-label", on ? "Mute sounds" : "Unmute sounds");
+        }
+        refreshSoundBtn();
+
         // Re-triggers a one-shot flash by clearing both flash classes and forcing a reflow
         // before re-adding — so a mid-line correct move flashes green every time.
         function flashBoard(kind: "correct" | "miss"): void {
@@ -330,8 +357,10 @@ export function renderDrill(ctx: AppContext): void {
 
         function solved(): void {
           // Confetti stays reserved for scored solves — a practice win gets the
-          // green flash + pop text only.
+          // green flash + pop text only. The chime is answer feedback (like the
+          // flash), so it plays in practice too.
           if (!practice) celebratePop(elementOrigin(boardEl).x, elementOrigin(boardEl).y);
+          playSound("puzzle-correct");
           feedbackEl.replaceChildren(
             el("p", {
               class: "drill__feedback-text drill__feedback-text--correct pop",
@@ -386,6 +415,7 @@ export function renderDrill(ctx: AppContext): void {
                 2 * m,
                 () => boardEl.isConnected,
                 () => enterReview(frames.length - 1, true),
+                playFrameSound,
               );
             },
           });
@@ -412,6 +442,7 @@ export function renderDrill(ctx: AppContext): void {
                 progress.remove();
                 note.remove();
                 playOpponentReply(api, ref.fenAfterReply, ref.replyUci); // ✗ badge persists
+                playSound(soundForMove(uciToSan(ref.fenAfterWrong, ref.replyUci), "opponent"));
                 feedbackEl.append(el("p", { class: "muted", text: ref.line }));
                 setTimeout(() => {
                   if (!boardEl.isConnected) return;
@@ -507,11 +538,14 @@ export function renderDrill(ctx: AppContext): void {
             onClick: () => stepTo(frameIdx + 1),
           });
 
-          function stepTo(next: number): void {
+          // sound=false on the review-entry render: the board already sits on
+          // that frame (and the solve chime / autoplay just sounded it).
+          function stepTo(next: number, sound = true): void {
             if (next < 0 || next >= frames.length) return; // clamp at both ends
             frameIdx = next;
             const f = frames[frameIdx];
             showFrame(api, f.fen, f.lastMove);
+            if (sound) playFrameSound(frameIdx);
             caption.textContent = `${frameIdx + 1} / ${frames.length} · ${f.label}`;
             prevBtn.disabled = frameIdx === 0;
             nextBtn.disabled = frameIdx === frames.length - 1;
@@ -552,7 +586,7 @@ export function renderDrill(ctx: AppContext): void {
           };
           window.addEventListener("keydown", keyHandler);
 
-          stepTo(startIdx);
+          stepTo(startIdx, false);
         }
 
         async function onMove(orig: string, dest: string): Promise<void> {
@@ -561,6 +595,7 @@ export function renderDrill(ctx: AppContext): void {
           clearShapes(api); // a hint circle must not outlive the move it hinted
           const step = moves[m];
           const playedUci = moveToUci(step.fenBefore, orig, dest);
+          const playedSan = uciToSan(step.fenBefore, playedUci);
           // An off-line move that mates on the spot still solves the puzzle
           // (lichess convention) — and ends it, checkmate leaves no reply.
           const altMate = playedUci !== step.expectedUci && deliversMate(step.fenBefore, playedUci);
@@ -574,6 +609,9 @@ export function renderDrill(ctx: AppContext): void {
           if (!passed) {
             lockBoard(api);
             flashBoard("miss");
+            // Only the incorrect thunk, no move sound (chess.com puzzles do the
+            // same) — and before finalize's IDB awaits so it lands with the flash.
+            playSound("puzzle-incorrect");
             await finalize(false);
             if (!boardEl.isConnected) return;
             enterMissChoice(step, playedUci);
@@ -589,12 +627,14 @@ export function renderDrill(ctx: AppContext): void {
                 {
                   fen: applyUci(step.fenBefore, playedUci),
                   lastMove: [orig, dest] as [string, string],
-                  label: `${turnColorOf(step.fenBefore) === "white" ? "White" : "Black"}: ${uciToSan(step.fenBefore, playedUci)}`,
+                  label: `${turnColorOf(step.fenBefore) === "white" ? "White" : "Black"}: ${playedSan}`,
+                  san: playedSan,
                 },
               ];
             }
             lockBoard(api);
             flashBoard("correct");
+            playSound(soundForMove(playedSan, "self"));
             await finalize(true);
             if (!boardEl.isConnected) return;
             solved();
@@ -607,9 +647,11 @@ export function renderDrill(ctx: AppContext): void {
           const reply = step.reply!;
           lockBoard(api);
           flashBoard("correct");
+          playSound(soundForMove(playedSan, "self"));
           setTimeout(() => {
             if (!boardEl.isConnected) return;
             playOpponentReply(api, reply.fenAfter, reply.uci);
+            playFrameSound(2 * m + 2); // the reply's frame — even index, opponent
             m++;
             updateMoveIndicator();
             setTimeout(() => {
@@ -641,7 +683,7 @@ export function renderDrill(ctx: AppContext): void {
               el("div", { class: "stat-row" }, scoreEl, streakEl),
               feedbackEl,
               reviewEl,
-              el("div", { class: "stat-row" }, skipBtn, quitBtn),
+              el("div", { class: "stat-row" }, skipBtn, quitBtn, soundBtn),
             ),
           ),
         );
@@ -665,6 +707,7 @@ export function renderDrill(ctx: AppContext): void {
           setTimeout(() => {
             if (!boardEl.isConnected) return;
             playOpponentReply(api, pz.fen, intro.uci);
+            playSound(soundForMove(uciToSan(intro.fenBefore, intro.uci), "opponent"));
             setTimeout(() => {
               if (!boardEl.isConnected) return;
               armForMove(api, pz.fen);

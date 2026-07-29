@@ -17,6 +17,7 @@ The data sources, libraries, conventions, and tooling this project is built on, 
 - **[idb](https://github.com/jakearchibald/idb)** (ISC) — thin promise wrapper over IndexedDB. Puzzle persistence relies on the `add` (first-wins, preserves review history) vs `put` (overwrite, used by verdict healing) distinction in `web/src/db.ts`.
 - **[canvas-confetti](https://github.com/catdad/canvas-confetti)** (ISC) — session-complete celebration.
 - **[Montserrat](https://fontsource.org/fonts/montserrat)** via `@fontsource/montserrat` (OFL-1.1) — display typeface.
+- **[Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds)** and **[Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds)** (CC0 1.0) — the drill's sound effects (`web/public/sound/`, played by `web/src/ui/sound.ts`): wooden move/capture/castle thocks and check/checkmate bells from Impact Sounds; the promotion sweep and puzzle correct/incorrect chimes from Interface Sounds. Transcoded to mono MP3 (per-file provenance in `web/public/sound/SOURCES.txt`). CC0 needs no attribution; credited here per this ledger's policy. The chess.com *sound vocabulary* (distinct self/opponent/capture/check sounds) is reimplemented with these freely-licensed samples — chess.com's own audio files are not used, and lichess's standard sounds were rejected as non-free per [lila's COPYING.md](https://github.com/lichess-org/lila/blob/master/COPYING.md).
 
 ## Conventions & prior art
 

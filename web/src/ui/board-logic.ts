@@ -148,12 +148,31 @@ export function uciToSan(fen: string, uci: string): string {
   }
 }
 
+// Coarse move class derived purely from SAN markers (makeSan emits "#", "+",
+// "=", "O-O"/"O-O-O", "x"). Precedence matters: a move that mates while
+// capturing is "checkmate", a promotion that checks is "check", and so on —
+// matching which single sound chess.com plays. uciToSan's raw-UCI fallback
+// tokens carry no markers and safely degrade to "move".
+export type MoveClass = "checkmate" | "check" | "promote" | "castle" | "capture" | "move";
+
+export function classifySan(san: string): MoveClass {
+  if (san.endsWith("#")) return "checkmate";
+  if (san.includes("+")) return "check";
+  if (san.includes("=")) return "promote";
+  if (san.startsWith("O-O")) return "castle";
+  if (san.includes("x")) return "capture";
+  return "move";
+}
+
 // One position in the post-solve review walk: the FEN to show, the move that produced it
-// (for the last-move highlight; null on the starting position), and a short caption.
+// (for the last-move highlight; null on the starting position), a short caption, and the
+// bare SAN of that move (null on the starting position) so consumers can classify it
+// (classifySan) without re-parsing the FEN.
 export interface ReviewFrame {
   fen: string;
   lastMove: [string, string] | null;
   label: string;
+  san: string | null;
 }
 
 // Flattens a planned line into the ply-by-ply positions the review steps through: the
@@ -167,20 +186,24 @@ export function buildReviewFrames(moves: UserMoveStep[]): ReviewFrame[] {
   const label = (color: Color, san: string) => `${color === "white" ? "White" : "Black"}: ${san}`;
   const squares = (uci: string): [string, string] => [uci.slice(0, 2), uci.slice(2, 4)];
 
-  const frames: ReviewFrame[] = [{ fen: moves[0].fenBefore, lastMove: null, label: "Start" }];
+  const frames: ReviewFrame[] = [{ fen: moves[0].fenBefore, lastMove: null, label: "Start", san: null }];
   for (const step of moves) {
     const mover = turnColorOf(step.fenBefore);
     const fenAfterUser = applyUci(step.fenBefore, step.expectedUci);
+    const userSan = uciToSan(step.fenBefore, step.expectedUci);
     frames.push({
       fen: fenAfterUser,
       lastMove: squares(step.expectedUci),
-      label: label(mover, uciToSan(step.fenBefore, step.expectedUci)),
+      label: label(mover, userSan),
+      san: userSan,
     });
     if (step.reply) {
+      const replySan = uciToSan(fenAfterUser, step.reply.uci);
       frames.push({
         fen: step.reply.fenAfter,
         lastMove: squares(step.reply.uci),
-        label: label(mover === "white" ? "black" : "white", uciToSan(fenAfterUser, step.reply.uci)),
+        label: label(mover === "white" ? "black" : "white", replySan),
+        san: replySan,
       });
     }
   }

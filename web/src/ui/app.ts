@@ -7,6 +7,7 @@ import type { TrainerSchema } from "../db";
 import { openTrainerDb } from "../db";
 import { DEMO_DISPLAY_NAME, DEMO_USERNAME, seedDemo } from "../demo/demoFixture";
 import { el, clear, mount } from "./dom";
+import { initSounds } from "./sound";
 import { renderLanding } from "./screens/landing";
 import { renderAnalyzing } from "./screens/analyzing";
 import { renderProfile } from "./screens/profile";
@@ -42,6 +43,8 @@ const screens: Record<ScreenName, ScreenRenderer> = {
 export async function bootApp(): Promise<void> {
   const root = document.getElementById("app");
   if (!root) return; // index.html always has #app; nothing sane to do without it
+
+  initSounds(); // fetch eagerly; AudioContext unlocks on the first gesture
 
   let db: IDBPDatabase<TrainerSchema>;
   try {

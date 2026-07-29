@@ -139,13 +139,16 @@ export function clearShapes(api: Api): void {
 
 // Plays review frames onto the (locked) board one per stepMs, starting by showing
 // frames[fromIdx] immediately. The chain dies silently when alive() goes false
-// (navigation/re-mount), so callers need no cancellation token.
+// (navigation/re-mount), so callers need no cancellation token. onFrame fires for
+// each ADVANCED-to frame — not the immediate frames[fromIdx] display, which is a
+// rewind re-show of a position already seen (the caller uses it for move sounds).
 export function autoplayFrames(
   api: Api,
   frames: ReviewFrame[],
   fromIdx: number,
   alive: () => boolean,
   onDone: () => void,
+  onFrame?: (idx: number) => void,
   stepMs = 700,
 ): void {
   showFrame(api, frames[fromIdx].fen, frames[fromIdx].lastMove);
@@ -157,6 +160,7 @@ export function autoplayFrames(
     setTimeout(() => {
       if (!alive()) return;
       showFrame(api, frames[idx].fen, frames[idx].lastMove);
+      onFrame?.(idx);
       step(idx + 1);
     }, stepMs);
   }

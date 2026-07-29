@@ -1,0 +1,20 @@
+Sound effects — provenance
+
+All samples by Kenney (https://kenney.nl), license CC0 1.0 Universal
+(https://creativecommons.org/publicdomain/zero/1.0/). No attribution required;
+credited in the repo's REFERENCES.md per its ledger policy. Each file was
+transcoded to mono 44.1kHz MP3 with peak normalization (bells tail-trimmed
+with a 50ms fade); chess.com's own audio files are NOT used.
+
+From Impact Sounds (https://kenney.nl/assets/impact-sounds):
+  move-self.mp3        <- impactWood_light_000.ogg
+  move-opponent.mp3    <- impactWood_medium_001.ogg
+  capture.mp3          <- impactPlank_medium_000.ogg
+  castle.mp3           <- impactWood_medium_004.ogg
+  check.mp3            <- impactBell_heavy_004.ogg
+  checkmate.mp3        <- impactBell_heavy_000.ogg
+
+From Interface Sounds (https://kenney.nl/assets/interface-sounds):
+  promote.mp3          <- maximize_008.wav
+  puzzle-correct.mp3   <- confirmation_001.wav
+  puzzle-incorrect.mp3 <- error_004.wav
