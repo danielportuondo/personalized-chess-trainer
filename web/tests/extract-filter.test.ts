@@ -28,6 +28,9 @@ describe("extractPuzzles", () => {
 
   it("drops below cpl threshold", () => expect(extractPuzzles([base({ cpl: 100 })]).length).toBe(0));
 
+  it("drops a row whose played move is the engine best (two-search cpl noise)", () =>
+    expect(extractPuzzles([base({ playedMoveUci: "g1h1" })]).length).toBe(0));
+
   it("keeps a boundary blunder (cpl == 150, evalBefore just above -700, evalAfter just below 700)", () =>
     expect(
       extractPuzzles([base({ cpl: 150, evalBeforeCp: -699, evalAfterPlayedCp: 699 })]).length

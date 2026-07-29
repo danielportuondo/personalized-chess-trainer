@@ -20,6 +20,7 @@ def extract_puzzles(cfg: Config) -> int:
         "WHERE cpl >= ? "
         "  AND eval_before_cp > ? "  # not already lost (nothing to teach)
         "  AND eval_after_played_cp < ? "  # you did real damage, not a slip while still winning
+        "  AND played_move_uci != best_move_uci "  # best-move-as-blunder = two-search noise
         "ORDER BY cpl DESC",
         (cfg.cpl_threshold, -cfg.eval_cap, cfg.eval_cap),
     ).fetchall()

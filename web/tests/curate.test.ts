@@ -122,6 +122,13 @@ describe("curatePuzzle", () => {
     expect(curatePuzzle(makePuzzle({ ambiguous: true }))).toBeNull();
   });
 
+  it("rejects a puzzle whose played move is the solution's first move", () => {
+    // played == best means the "blunder" was two-search eval noise — there is
+    // nothing to drill (the real Qxg7 vs Facu_Roquero card, 2026-07-28).
+    expect(curatePuzzle(makePuzzle({ playedMoveUci: "h5f7" }))).toBeNull();
+    expect(isDrillable(makePuzzle({ playedMoveUci: "h5f7" }))).toBe(false);
+  });
+
   it("keeps unknown (legacy) ambiguity drillable", () => {
     expect(curatePuzzle(makePuzzle({ ambiguous: undefined }))).not.toBeNull();
   });

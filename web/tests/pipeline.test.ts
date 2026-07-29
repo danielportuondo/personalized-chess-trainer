@@ -84,7 +84,7 @@ describe("runPipeline", () => {
     // game2 (Black=dportuondo, 1 player move: ...d5): before=10 (black pov), after=5 (white
     // pov post-d5) -> flips to -5 black pov -> cpl=15 (not a puzzle).
     const infos: AnalysisInfo[] = [
-      { cp: 40, mate: null, pv: ["e2e4"] },
+      { cp: 40, mate: null, pv: ["d2d4"] }, // best differs from the played e2e4 (else no puzzle)
       { cp: 9000, mate: null, pv: [] },
       { cp: 10, mate: null, pv: ["d7d5"] },
       { cp: 5, mate: null, pv: [] },

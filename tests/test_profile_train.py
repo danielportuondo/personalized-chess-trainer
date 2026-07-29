@@ -139,3 +139,37 @@ def test_dedupe_key_collapses_move_counters():
     c = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w Kkq - 0 1"  # different castling rights
     assert dedupe_key(a) == dedupe_key(b)
     assert dedupe_key(a) != dedupe_key(c)
+
+
+def test_extract_skips_played_equals_best(tmp_path):
+    # A high-cpl row whose played move IS the engine best is noise from the two
+    # independent searches (before/after), not a blunder — never a puzzle.
+    from chess_trainer import db as ct_db
+    from chess_trainer.extract import extract_puzzles
+
+    cfg = Config(
+        username="t",
+        stockfish_path="stockfish",
+        contact_email="t@example.com",
+        db_path=tmp_path / "t.db",
+    )
+    conn = ct_db.connect(cfg.db_path)
+    ct_db.init_schema(conn)
+    conn.execute("INSERT INTO raw_games (url, archive_url, pgn) VALUES ('g', 'a', '1. e4 *')")
+    conn.executemany(
+        "INSERT INTO move_evals (game_url, ply, fullmove_no, player_color, fen_before,"
+        " played_move_uci, best_move_uci, best_line_uci, eval_before_cp, eval_after_played_cp,"
+        " cpl) VALUES ('g', ?, 1, 'white', ?, ?, ?, ?, 50, -300, 350)",
+        [
+            (1, "f1", "d4g7", "d4g7", "d4g7 d8b8"),  # played == best -> skipped
+            (3, "f2", "g1f1", "g1h1", "g1h1"),  # real blunder -> extracted
+        ],
+    )
+    conn.commit()
+
+    inserted = extract_puzzles(cfg)
+
+    rows = conn.execute("SELECT played_move_uci, best_move_uci FROM puzzles").fetchall()
+    conn.close()
+    assert inserted == 1
+    assert [(r["played_move_uci"], r["best_move_uci"]) for r in rows] == [("g1f1", "g1h1")]

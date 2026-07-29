@@ -85,6 +85,10 @@ export function curateLine(fen: string, solutionLineUci: string): CuratedLine | 
 
 export function curatePuzzle(puzzle: Puzzle): CuratedLine | null {
   if (puzzle.ambiguous) return null;
+  // played == solution[0] means the "blunder" was the engine's own best move —
+  // cpl is the diff of two independent searches, so noise on sharp lines can
+  // clear the threshold. "Find the move you already played" is not a puzzle.
+  if (puzzle.playedMoveUci === puzzle.solutionLineUci.trim().split(/\s+/)[0]) return null;
   return curateLine(puzzle.fen, puzzle.solutionLineUci);
 }
 

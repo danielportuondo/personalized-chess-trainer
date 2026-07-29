@@ -12,7 +12,14 @@ const EVAL_CAP = 700;
 // recurring position wins; sort before deduping to mirror that exactly.
 export function extractPuzzles(evals: MoveEval[]): Puzzle[] {
   const candidates = evals.filter(
-    (e) => e.cpl >= CPL_THRESHOLD && e.evalBeforeCp > -EVAL_CAP && e.evalAfterPlayedCp < EVAL_CAP
+    (e) =>
+      e.cpl >= CPL_THRESHOLD &&
+      e.evalBeforeCp > -EVAL_CAP &&
+      e.evalAfterPlayedCp < EVAL_CAP &&
+      // your best move can't be a blunder — high cpl here is noise between the
+      // two independent before/after searches, and the "puzzle" would ask the
+      // player to repeat the move they actually played
+      e.playedMoveUci !== e.bestMoveUci
   );
   const sorted = [...candidates].sort((a, b) => b.cpl - a.cpl);
 

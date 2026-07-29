@@ -114,12 +114,13 @@ describe("analyzeAndPersist", () => {
     const fetchImpl = fakeFetch(gamesRef);
 
     // 2 analyse() calls per game (evalBefore, evalAfter), in fetch order (game1, game2, game3).
+    // Scripted best moves must differ from the played e5/d5/c5 or extraction skips the row.
     const infos: AnalysisInfo[] = [
-      { cp: 10, mate: null, pv: ["e7e5"] },
+      { cp: 10, mate: null, pv: ["b8c6"] },
       { cp: 800, mate: null, pv: [] },
-      { cp: 20, mate: null, pv: ["d7d5"] },
+      { cp: 20, mate: null, pv: ["g8f6"] },
       { cp: 900, mate: null, pv: [] },
-      { cp: 30, mate: null, pv: ["c7c5"] },
+      { cp: 30, mate: null, pv: ["b8c6"] },
       { cp: 1000, mate: null, pv: [] },
     ];
     const { createEngineFn, fensSeen } = makeEngineFn(infos);
@@ -219,7 +220,7 @@ describe("analyzeAndPersist", () => {
     { cp: 0, mate: null, pv: [] },
   ];
   const QUIET_INFOS: AnalysisInfo[] = [
-    { cp: 10, mate: null, pv: ["e7e5"] },
+    { cp: 10, mate: null, pv: ["g8f6"] }, // best differs from the played e5 (else no puzzle)
     { cp: 800, mate: null, pv: [] }, // cpl 810 -> puzzle, but the quiet line isn't drillable
   ];
   const MATE_INFOS: AnalysisInfo[] = [
@@ -441,9 +442,10 @@ describe("analyzeAndPersist", () => {
   it("mints fresh puzzles with an intro derived from the source PGN at sourcePly", async () => {
     const db = await openTrainerDb();
 
-    // dportuondo (Black) blunders 1...e5 at ply 1; the intro is White's 1. e4.
+    // dportuondo (Black) blunders 1...e5 at ply 1 (engine preferred Nf6); the
+    // intro is White's 1. e4.
     const infos: AnalysisInfo[] = [
-      { cp: 10, mate: null, pv: ["e7e5"] },
+      { cp: 10, mate: null, pv: ["g8f6"] },
       { cp: 800, mate: null, pv: [] },
     ];
     const { createEngineFn } = makeEngineFn(infos);
