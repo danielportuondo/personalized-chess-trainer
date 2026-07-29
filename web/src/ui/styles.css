@@ -837,7 +837,14 @@ body {
 
 .drill__review-actions {
   display: flex;
+  flex-wrap: wrap; /* miss offers three buttons; let them stack on narrow cards */
   gap: 10px;
+}
+
+/* Slimmer than the analyzing screen's bar — it sits inline in the feedback area. */
+.drill__why-progress {
+  height: 8px;
+  max-width: 220px;
 }
 
 .drill__review-retry {

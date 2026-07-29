@@ -1,10 +1,22 @@
 import type { AppContext } from "../app";
 import { el, mount } from "../dom";
-import { mountPuzzleBoard, lockBoard, playOpponentReply, armForMove, showFrame } from "../board";
+import {
+  mountPuzzleBoard,
+  lockBoard,
+  playOpponentReply,
+  armForMove,
+  showFrame,
+  snapTo,
+  markWrongMove,
+  hintSquare,
+  clearShapes,
+  autoplayFrames,
+} from "../board";
 import { turnColorOf, moveToUci, planSolutionLine, buildReviewFrames, uciToSan, deliversMate, isPromotionVariant, applyUci } from "../board-logic";
 import type { UserMoveStep } from "../board-logic";
 import { celebratePop, elementOrigin } from "../celebrate";
 import { getAllPuzzles, getReviewByKey, recordResult, recordProgress } from "../../db";
+import { refuteWrongMove } from "../refute";
 import { weaknessSummary, REASON, HINT } from "../../profile";
 import { dueCandidates, selectDuePuzzles } from "../../review";
 import { curatePuzzle, difficultyScore, isDrillable } from "../../curate";
@@ -164,12 +176,18 @@ export function renderDrill(ctx: AppContext): void {
         const hintBtn = el("button", {
           class: "btn btn--ghost btn--hint",
           onClick: () => {
-            if (resolved || hintUsed || hintsLeft <= 0) return;
+            // busy: the board is mid-transition (intro replay / opponent reply),
+            // and any fen set wipes shapes — a circle drawn now would vanish.
+            if (resolved || busy || hintUsed || hintsLeft <= 0) return;
             hintUsed = true;
             hintsLeft--;
             hintTextEl.replaceChildren(
               el("p", { class: "drill__hint-text pop", text: HINT[pz.motif ?? "other"] }),
             );
+            // Circle the piece to move (moves[m]: mid-line hints point at the
+            // current step). The copy names the theme; the circle names the piece;
+            // the destination stays the player's job.
+            hintSquare(api, moves[m].expectedUci.slice(0, 2));
             refreshHintBtn();
           },
         });
@@ -216,6 +234,18 @@ export function renderDrill(ctx: AppContext): void {
             } catch (err) {
               renderLoadError(ctx, err);
             }
+          }
+        }
+
+        // No-stakes rerun of this puzzle — reachable from the miss choice and
+        // from the review's "Try again". The miss is already scored; the rerun
+        // can't touch it (finalize early-returns in practice mode).
+        function retry(): void {
+          cleanup();
+          try {
+            renderPuzzle(i, true);
+          } catch (err) {
+            renderLoadError(ctx, err);
           }
         }
 
@@ -311,18 +341,100 @@ export function renderDrill(ctx: AppContext): void {
           enterReview(frames.length - 1, false);
         }
 
-        function missed(step: UserMoveStep): void {
-          // The motif reason describes the puzzle's opening idea, so it only holds for a
-          // first-move miss; deeper in the line, name it as the continuation.
-          const reasonText = m === 0 ? (pz.motif ? REASON[pz.motif] : REASON.other) : "That wasn't the winning continuation.";
+        // The motif reason describes the puzzle's opening idea, so it only holds for a
+        // first-move miss; deeper in the line, name it as the continuation.
+        function missReasonText(): string {
+          return m === 0
+            ? pz.motif
+              ? REASON[pz.motif]
+              : REASON.other
+            : "That wasn't the winning continuation.";
+        }
+
+        // Chess.com-style miss: the wrong move stays on the board under a ✗ badge,
+        // the solution stays hidden, and the player chooses — rerun the puzzle,
+        // watch the line play out, or ask the engine why their move fails. The
+        // miss is already scored by the time we're here.
+        function enterMissChoice(step: UserMoveStep, wrongUci: string): void {
+          turnFlagEl.style.display = "none"; // same chrome-teardown as enterReview
+          moveIndicatorEl.textContent = "";
+          provenanceEl.textContent = "";
+          skipBtn.hidden = true;
+
+          markWrongMove(api, wrongUci.slice(2, 4));
           feedbackEl.replaceChildren(
-            el("p", { class: "drill__feedback-text drill__feedback-text--miss", text: "✗ Not quite." }),
-            el("p", { class: "muted" }, el("span", { text: "Best move: " }), el("span", { class: "notation", text: uciToSan(step.fenBefore, step.expectedUci) })),
-            el("p", { class: "muted", text: reasonText }),
+            el("p", { class: "drill__feedback-text drill__feedback-text--miss", text: "✗ Incorrect" }),
           );
-          // Reset the board from the wrong move back to the position they missed, so
-          // stepping forward reveals the winning continuation. frames[2*m] === step.fenBefore.
-          enterReview(2 * m, true);
+
+          const retryBtn = el("button", {
+            class: "btn btn--ghost drill__review-retry",
+            text: "↻ Retry",
+            onClick: retry,
+          });
+          const solutionBtn = el("button", {
+            class: "btn btn--primary drill__review-next",
+            text: "View solution",
+            onClick: () => {
+              // Autoplay from the position they faced — the first frame slides the
+              // wrong piece back (and showFrame clears the ✗) — then hand off to
+              // the arrow-key review at the payoff. frames[2*m] === step.fenBefore.
+              reviewEl.replaceChildren();
+              autoplayFrames(
+                api,
+                frames,
+                2 * m,
+                () => boardEl.isConnected,
+                () => enterReview(frames.length - 1, true),
+              );
+            },
+          });
+          // Opt-in engine refutation: the reply to the user's ACTUAL move — it
+          // explains the miss without revealing the puzzle's own solution, so
+          // it's safe to show before a retry. One shot per miss.
+          const whyBtn = el("button", {
+            class: "btn btn--ghost",
+            text: "Why?",
+            onClick: async () => {
+              retryBtn.disabled = true;
+              solutionBtn.disabled = true;
+              whyBtn.disabled = true;
+              const progress = el(
+                "div",
+                { class: "progress progress--indeterminate drill__why-progress" },
+                el("div", { class: "progress__fill" }),
+              );
+              const note = el("p", { class: "muted", text: "Asking the engine…" });
+              feedbackEl.append(progress, note);
+              try {
+                const ref = await refuteWrongMove(step.fenBefore, wrongUci);
+                if (!boardEl.isConnected) return;
+                progress.remove();
+                note.remove();
+                playOpponentReply(api, ref.fenAfterReply, ref.replyUci); // ✗ badge persists
+                feedbackEl.append(el("p", { class: "muted", text: ref.line }));
+                setTimeout(() => {
+                  if (!boardEl.isConnected) return;
+                  // Back to the choice position — reusing playOpponentReply also
+                  // restores the wrong move's own square highlight. Chessground
+                  // clears shapes on every fen set, so the ✗ needs re-drawing.
+                  playOpponentReply(api, ref.fenAfterWrong, wrongUci);
+                  markWrongMove(api, wrongUci.slice(2, 4));
+                  retryBtn.disabled = false;
+                  solutionBtn.disabled = false; // Why? stays consumed; its line stays up
+                }, 1600);
+              } catch {
+                if (!boardEl.isConnected) return;
+                progress.remove();
+                note.remove();
+                feedbackEl.append(el("p", { class: "muted", text: missReasonText() }));
+                retryBtn.disabled = false;
+                solutionBtn.disabled = false;
+              }
+            },
+          });
+          reviewEl.replaceChildren(
+            el("div", { class: "drill__review-actions" }, retryBtn, solutionBtn, whyBtn),
+          );
         }
 
         // The full where-this-came-from story — review-only by design (the result
@@ -404,15 +516,6 @@ export function renderDrill(ctx: AppContext): void {
             onClick: () => advance(),
           });
 
-          function retry(): void {
-            cleanup();
-            try {
-              renderPuzzle(i, true);
-            } catch (err) {
-              renderLoadError(ctx, err);
-            }
-          }
-
           const story = reviewStory();
           reviewEl.replaceChildren(
             ...(story ? [story] : []),
@@ -448,6 +551,7 @@ export function renderDrill(ctx: AppContext): void {
         async function onMove(orig: string, dest: string): Promise<void> {
           if (resolved || busy) return;
           busy = true;
+          clearShapes(api); // a hint circle must not outlive the move it hinted
           const step = moves[m];
           const playedUci = moveToUci(step.fenBefore, orig, dest);
           // An off-line move that mates on the spot still solves the puzzle
@@ -465,7 +569,7 @@ export function renderDrill(ctx: AppContext): void {
             flashBoard("miss");
             await finalize(false);
             if (!boardEl.isConnected) return;
-            missed(step);
+            enterMissChoice(step, playedUci);
             return;
           }
 
@@ -539,6 +643,28 @@ export function renderDrill(ctx: AppContext): void {
         // rendered size at construction time, so it must already be attached.
         mount(ctx.root, screen);
         api = mountPuzzleBoard(boardEl, { fen: pz.fen, onMove });
+
+        // Replay the opponent's move that created this position (the chess.com/
+        // lichess intro convention): rewind instantly, animate the move in, then
+        // arm input. Mounting stays on pz.fen — orientation and movable side
+        // derive from it. Locked + busy so a drag can't race the replay; timers
+        // re-check the mount exactly like onMove's reply chain. Practice reruns
+        // replay it too — the intro is part of the puzzle's presentation.
+        if (pz.intro) {
+          const intro = pz.intro;
+          busy = true;
+          lockBoard(api);
+          snapTo(api, intro.fenBefore);
+          setTimeout(() => {
+            if (!boardEl.isConnected) return;
+            playOpponentReply(api, pz.fen, intro.uci);
+            setTimeout(() => {
+              if (!boardEl.isConnected) return;
+              armForMove(api, pz.fen);
+              busy = false;
+            }, 260);
+          }, 450);
+        }
       }
 
       renderPuzzle(0);

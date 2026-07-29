@@ -39,9 +39,11 @@ export const REASON: Record<Motif, string> = {
 };
 
 // Pre-move, encouraging nudges shown when a player asks for a hint mid-puzzle.
-// Deliberately name the THEME, never the move. Defensive motifs (allowed mate,
-// hanging piece) point toward safety — the classifier flags the player's own
-// exposed king / loose piece, so that is what the solver must guard against.
+// Deliberately name the THEME, never the move — the drill pairs this text with
+// a board highlight circling the piece to move, so the copy must never give
+// away the destination. Defensive motifs (allowed mate, hanging piece) point
+// toward safety — the classifier flags the player's own exposed king / loose
+// piece, so that is what the solver must guard against.
 export const HINT: Record<Motif, string> = {
   "missed forced mate": "There's a mate in this position — go hunt the king down. 👑",
   "allowed forced mate": "Careful — danger's in the air. Find the move that keeps you safe.",

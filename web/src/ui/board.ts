@@ -20,6 +20,7 @@ import type { Config } from "chessground/config";
 import type { DrawShape } from "chessground/draw";
 import type { Key } from "chessground/types";
 import { legalDests, turnColorOf } from "./board-logic";
+import type { ReviewFrame } from "./board-logic";
 
 export interface PuzzleBoardOpts {
   fen: string;
@@ -91,7 +92,15 @@ export function lockBoard(api: Api): void {
 export function playOpponentReply(api: Api, fenAfter: string, moveUci: string): void {
   const orig = moveUci.slice(0, 2) as Key;
   const dest = moveUci.slice(2, 4) as Key;
-  api.set({ fen: fenAfter, lastMove: [orig, dest] });
+  // Duration pinned because chessground config merges persist: a preceding
+  // snapTo leaves duration 0 in the state, which would swallow this animation.
+  api.set({ fen: fenAfter, lastMove: [orig, dest], animation: { duration: 200 } });
+}
+
+// Instantly snaps the board to `fen` — no animation, no last-move highlight.
+// Used to rewind for the intro replay; playOpponentReply restores the duration.
+export function snapTo(api: Api, fen: string): void {
+  api.set({ fen, lastMove: undefined, animation: { duration: 0 } });
 }
 
 // Renders one post-solve review frame on the (already-locked) board: sets the position and
@@ -103,6 +112,55 @@ export function showFrame(api: Api, fen: string, lastMove: [string, string] | nu
     fen,
     lastMove: lastMove ? [lastMove[0] as Key, lastMove[1] as Key] : undefined,
   });
+}
+
+// Corner badge on the destination square of a wrong move (chess.com idiom): the piece
+// stays visible under it. customSvg html is injected inside chessground's square-local
+// <svg viewBox="0 0 100 100">, so coordinates below are percent-of-square.
+const WRONG_BADGE =
+  `<circle cx="75" cy="25" r="18" fill="#d33" stroke="#fff" stroke-width="2"/>` +
+  `<path d="M68 18l14 14M82 18l-14 14" stroke="#fff" stroke-width="5" stroke-linecap="round"/>`;
+
+export function markWrongMove(api: Api, dest: string): void {
+  api.setShapes([{ orig: dest as Key, customSvg: { html: WRONG_BADGE } }]);
+}
+
+// Circles a single square in the hint's gold — chess convention for "this piece
+// moves", deliberately never the destination.
+export function hintSquare(api: Api, square: string): void {
+  api.setShapes([{ orig: square as Key, brush: "yellow" }]);
+}
+
+// setShapes always REPLACES the shape set (a miss badge correctly evicts a hint
+// circle); this is the explicit "nothing drawn" case.
+export function clearShapes(api: Api): void {
+  api.setShapes([]);
+}
+
+// Plays review frames onto the (locked) board one per stepMs, starting by showing
+// frames[fromIdx] immediately. The chain dies silently when alive() goes false
+// (navigation/re-mount), so callers need no cancellation token.
+export function autoplayFrames(
+  api: Api,
+  frames: ReviewFrame[],
+  fromIdx: number,
+  alive: () => boolean,
+  onDone: () => void,
+  stepMs = 700,
+): void {
+  showFrame(api, frames[fromIdx].fen, frames[fromIdx].lastMove);
+  function step(idx: number): void {
+    if (idx >= frames.length) {
+      onDone();
+      return;
+    }
+    setTimeout(() => {
+      if (!alive()) return;
+      showFrame(api, frames[idx].fen, frames[idx].lastMove);
+      step(idx + 1);
+    }, stepMs);
+  }
+  step(fromIdx + 1);
 }
 
 // Re-enables input for the side to move at `fen`, restricting drags to its legal moves.
