@@ -2,6 +2,7 @@ import type { AppContext } from "../app";
 import { el, mount } from "../dom";
 import { analyzeAndPersist } from "../../pipeline";
 import { getAllPuzzles } from "../../db";
+import { track, analysisErrorProps } from "../analytics";
 
 // Shown on rotation during the wait so the (real, engine-bound) analysis feels
 // like a coaching moment rather than a spinner.
@@ -122,6 +123,7 @@ export function renderAnalyzing(ctx: AppContext, params?: unknown): void {
   })
     .then(async (res) => {
       clearInterval(tipTimer);
+      track("analysis-complete", { username, puzzles: res.newPuzzles });
       if (!fillEl.isConnected) return; // navigated away — don't render over another screen
       if (res.newGames === 0 && res.newPuzzles === 0) {
         const existing = await getAllPuzzles(ctx.db, username);
@@ -137,6 +139,7 @@ export function renderAnalyzing(ctx: AppContext, params?: unknown): void {
     })
     .catch((err) => {
       clearInterval(tipTimer);
+      track("analysis-error", { username, ...analysisErrorProps(err) });
       showError(err);
     });
 }
