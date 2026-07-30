@@ -16,3 +16,16 @@ export function track(event: string, data?: EventData): void {
     // Analytics must never break the app.
   }
 }
+
+// Shapes an analysis-pipeline failure into analysis-error event properties.
+// The stages mirror the known error messages thrown in src/chesscom.ts;
+// anything else (engine, IndexedDB, bugs) lands in "other".
+export function analysisErrorProps(err: unknown): { stage: string; message: string } {
+  const message = (err as { message?: string } | undefined)?.message ?? "unknown";
+  const stage = message.includes("user not found")
+    ? "not-found"
+    : message.includes("Chess.com API error") || message.includes("Repeated 429s")
+      ? "chesscom-api"
+      : "other";
+  return { stage, message: message.slice(0, 100) };
+}
