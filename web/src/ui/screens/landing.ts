@@ -1,6 +1,7 @@
 import type { AppContext } from "../app";
 import { el, mount } from "../dom";
 import { mountStaticBoard } from "../board";
+import { track } from "../analytics";
 
 // The hero board: a real "Black hung the queen — White to play" moment. The red
 // circle marks the blunder square; the green arrow is the punish. It IS the product.
@@ -27,6 +28,7 @@ export function renderLanding(ctx: AppContext): void {
       errorEl.textContent = "Enter your Chess.com username to analyze your games.";
       return;
     }
+    track("analyze", { username: handle });
     // Not persisted yet — analyzing.ts saves the handle only after the
     // analysis proves it real, so a typo never becomes a ghost profile.
     ctx.navigate("analyzing", { handle });
@@ -43,6 +45,7 @@ export function renderLanding(ctx: AppContext): void {
     el("span", { class: "btn__note", text: "8 quick puzzles · no account needed" }),
   );
   demoBtn.addEventListener("click", () => {
+    track("demo-start");
     demoBtn.setAttribute("disabled", "true");
     demoBtn.replaceChildren(el("span", { text: "Loading demo…" }));
     ctx.enterDemo().catch(() => {
