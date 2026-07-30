@@ -113,6 +113,25 @@ export function renderLanding(ctx: AppContext): void {
           el("span", { class: "eval-chip eval-chip--good", text: "+8.6" }),
         ),
       ),
+      el(
+        "p",
+        { class: "gm-note" },
+        "Want to train on master-level games? Try ",
+        el("button", {
+          class: "gm-note__handle",
+          text: "MagnusCarlsen",
+          attrs: { type: "button" },
+          onClick: () => {
+            input.value = "MagnusCarlsen";
+            errorEl.textContent = "";
+            // focus() alone doesn't reliably scroll on mobile, where the
+            // board leads and the input sits below the fold.
+            input.focus({ preventScroll: true });
+            input.scrollIntoView({ behavior: "smooth", block: "center" });
+          },
+        }),
+        " or any of your favorite GMs!",
+      ),
     ),
   );
 

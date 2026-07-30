@@ -658,6 +658,49 @@ body {
   color: var(--text-dim);
 }
 
+/* GM-handle note — the second no-account path: borrow a legend's games.
+   The handle chip reuses the eval-chip--good vocabulary: green = the right move. */
+
+.gm-note {
+  margin: -2px 0 0;
+  max-width: 40ch;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.gm-note__handle {
+  appearance: none;
+  border: 0;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: rgba(129, 182, 76, 0.18);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    transform 120ms ease;
+}
+
+.gm-note__handle:hover {
+  background: rgba(129, 182, 76, 0.3);
+}
+
+.gm-note__handle:active {
+  transform: translateY(1px);
+}
+
+.gm-note__handle:focus-visible {
+  outline: 2px solid var(--accent-deep);
+  outline-offset: 2px;
+}
+
 /* Demo banner */
 
 .demo-banner {
