@@ -16,6 +16,7 @@ import { turnColorOf, moveToUci, planSolutionLine, buildReviewFrames, uciToSan, 
 import type { UserMoveStep } from "../board-logic";
 import { celebratePop, elementOrigin } from "../celebrate";
 import { isSoundEnabled, playSound, setSoundEnabled, soundForMove } from "../sound";
+import { track } from "../analytics";
 import { getAllPuzzles, getReviewByKey, recordResult, recordProgress } from "../../db";
 import { refuteWrongMove } from "../refute";
 import { weaknessSummary, REASON, HINT } from "../../profile";
@@ -325,6 +326,7 @@ export function renderDrill(ctx: AppContext): void {
           resolved = true;
           refreshHintBtn();
           if (practice) return; // no-stakes rerun: the original miss already scored
+          track("puzzle-result", { correct: passed });
           attempted++;
           if (passed) correct++;
           run = passed ? run + 1 : 0;
