@@ -28,7 +28,6 @@ export function renderLanding(ctx: AppContext): void {
       errorEl.textContent = "Enter your Chess.com username to analyze your games.";
       return;
     }
-    track("analyze", { username: handle });
     // Not persisted yet — analyzing.ts saves the handle only after the
     // analysis proves it real, so a typo never becomes a ghost profile.
     ctx.navigate("analyzing", { handle });

@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 describe("track", () => {
-  it("no-ops without a umami global (node, dev, ad-blocked)", () => {
+  it("no-ops without a umami global (vitest, ad-blocked)", () => {
     expect(() => track("analyze", { username: "magnuscarlsen" })).not.toThrow();
   });
 

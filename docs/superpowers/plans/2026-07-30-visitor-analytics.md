@@ -392,7 +392,9 @@ Expected: CI green. Then poll https://personalized-chess-trainer.pages.dev until
 
 Using the Playwright MCP browser: navigate to https://personalized-chess-trainer.pages.dev, then check `browser_network_requests` for:
 - `GET https://cloud.umami.is/script.js` → 200
-- `POST https://cloud.umami.is/api/send` → 200 (the auto pageview)
+- `POST https://gateway.umami.is/api/send` → 200 (the auto pageview; the
+  script itself still loads from cloud.umami.is — only the send endpoint
+  is on the gateway host)
 
 If both requests are absent, check for a content blocker in the test browser before debugging code.
 
@@ -402,7 +404,7 @@ Still on pages.dev:
 - Click "Try the demo" → a new `POST /api/send` fires (demo-start); solve or fail one demo puzzle → another POST (puzzle-result).
 - Go back to landing (reload), type a real handle (e.g. `MagnusCarlsen` via the GM chip) and click "Analyze my games" → POST fires (analyze) before the analyzing screen takes over. Letting the full analysis run to completion (analysis-complete) is optional here — it takes minutes; Daniel's next real use covers it.
 
-Expected: one `POST https://cloud.umami.is/api/send` → 200 per interaction.
+Expected: one `POST https://gateway.umami.is/api/send` → 200 per interaction.
 
 - [ ] **Step 4: Daniel eyeballs the dashboard**
 

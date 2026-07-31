@@ -29,6 +29,10 @@ export function renderAnalyzing(ctx: AppContext, params?: unknown): void {
     ctx.navigate("landing");
     return;
   }
+  // Fired here (not landing.ts) so profile re-analyze entry points — which
+  // navigate straight to "analyzing" without going through landing — are
+  // covered too.
+  track("analyze", { username });
 
   const statusEl = el("p", { class: "subtitle", text: `Fetching ${username}'s recent games…` });
   const fillEl = el("div", { class: "progress__fill" });

@@ -132,7 +132,14 @@ export function renderProfile(ctx: AppContext, params?: unknown): void {
                   { class: "card" },
                   el("p", { class: "subtitle", text: "No puzzles yet" }),
                   el("p", { class: "muted", text: "Analyze your games to build your weakness profile." }),
-                  el("button", { class: "btn btn--primary btn--lg", text: "Analyze my games", onClick: () => ctx.navigate("analyzing") }),
+                  el("button", {
+                    class: "btn btn--primary btn--lg",
+                    text: "Analyze my games",
+                    // Demo profiles never have real puzzles to re-run the pipeline on
+                    // (that's the isEmpty:false demo path) — this exists as a defensive
+                    // mirror of the demo-banner routing above should isEmpty ever be true here.
+                    onClick: () => ctx.navigate(ctx.isDemo ? "landing" : "analyzing"),
+                  }),
                 )
               : el(
                   "div",
@@ -169,7 +176,13 @@ export function renderProfile(ctx: AppContext, params?: unknown): void {
               : null,
             isEmpty
               ? null
-              : el("button", { class: "btn btn--ghost", text: "Analyze more games", onClick: () => ctx.navigate("analyzing") }),
+              : el("button", {
+                  class: "btn btn--ghost",
+                  text: "Analyze more games",
+                  // Mirrors the demo-banner's routing above: a demo profile has no real
+                  // handle to re-run the pipeline on, so it goes to landing instead.
+                  onClick: () => ctx.navigate(ctx.isDemo ? "landing" : "analyzing"),
+                }),
             el("button", { class: "btn btn--ghost", text: ctx.isDemo ? "Exit demo" : "Switch handle", onClick: () => ctx.navigate("landing") }),
           ),
         ),

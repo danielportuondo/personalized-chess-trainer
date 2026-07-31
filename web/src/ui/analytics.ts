@@ -1,6 +1,7 @@
-// Umami custom-event tracking. The tracker script (index.html) only runs on
-// the production domain (data-domains), so in dev, vitest, and for ad-blocked
-// visitors window.umami never exists and every call here is a silent no-op.
+// Umami custom-event tracking. In vitest and for ad-blocked visitors,
+// window.umami never exists. In dev it does exist (Vite serves the tracker
+// script too) but data-domains (index.html) suppresses every send there —
+// either way every call here is a silent no-op outside production.
 type EventData = Record<string, string | number | boolean>;
 
 interface Umami {

@@ -34,9 +34,12 @@ design — it ships in the page HTML, so committing it is fine).
 ## Architecture
 
 - **Script tag** in `web/index.html` `<head>`:
-  `<script defer src="https://cloud.umami.is/script.js"
+  `<script crossorigin="anonymous" defer src="https://cloud.umami.is/script.js"
   data-website-id="10fe7bb2-5436-474e-a877-15db8eac04a1"
   data-domains="personalized-chess-trainer.pages.dev"></script>`.
+  `crossorigin="anonymous"` is required because `_headers` sends
+  `Cross-Origin-Embedder-Policy: require-corp` for `/*`, which otherwise
+  blocks this no-cors cross-origin script load.
   `data-domains` makes localhost, previews, and CI no-ops — no environment
   logic in app code.
 - **Wrapper** `web/src/ui/analytics.ts`:
@@ -52,7 +55,7 @@ design — it ships in the page HTML, so committing it is fine).
 
 | Event | Properties | Fires when |
 |---|---|---|
-| `analyze` | `username` | Analyze submitted with a real handle |
+| `analyze` | `username` | fires when the analysis pipeline starts — any entry point, landing or profile re-analyze |
 | `demo-start` | — | one-click demo button clicked |
 | `analysis-complete` | `username`, `puzzles` (count extracted) | analysis pipeline finishes |
 | `analysis-error` | `username`, `stage`, `message` (truncated to 100 chars) | pipeline catch paths; `stage` names the pipeline step, enumerated at implementation from existing catch paths (e.g. fetch / review / extract) |
@@ -60,7 +63,7 @@ design — it ships in the page HTML, so committing it is fine).
 
 Notes:
 
-- Usernames are captured only on Analyze submit — typing alone sends nothing.
+- Usernames are captured when an analysis starts, never on typing.
 - The demo path fires `demo-start` but not `analyze`/`analysis-complete`
   (it loads prebuilt puzzles without running the pipeline). Demo drills do
   emit `puzzle-result`, so raw drill counts mix demo and real usage; the

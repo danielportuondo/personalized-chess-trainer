@@ -30,7 +30,10 @@
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2381b64c'/><text x='16' y='25' font-size='23' text-anchor='middle' fill='%23ffffff'>%E2%99%9E</text></svg>"
     />
     <title>Chess Trainer — train on your own blunders</title>
+    <!-- _headers sends COEP: require-corp for /*, which blocks a no-cors
+         cross-origin script load unless it's explicitly marked anonymous. -->
     <script
+      crossorigin="anonymous"
       defer
       src="https://cloud.umami.is/script.js"
       data-website-id="10fe7bb2-5436-474e-a877-15db8eac04a1"
